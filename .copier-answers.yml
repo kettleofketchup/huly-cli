@@ -1,0 +1,8 @@
+# Changes here will be overwritten by Copier
+_commit: v1.2.0
+_src_path: gh:kettleofketchup/go-template
+ci_platform: github
+github_registry: ghcr.io/kettleofketchup/huly-cli
+project_name: huly-cli
+self_update: true
+tool_name: huly

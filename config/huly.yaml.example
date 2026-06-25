@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=schema.json
+#
+# huly configuration
+# Copy this file to huly.yaml and modify as needed.
+#
+# Environment variables override config file values.
+# Prefix: HULY_
+# Example: HULY_LOG_LEVEL=debug
+
+log:
+  # Log verbosity: debug, info, warn, error
+  level: info
+  # Output format: text, json
+  format: text

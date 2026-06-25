@@ -1,0 +1,5 @@
+pre-commit:
+  commands:
+    config-schema:
+      glob: "src/*/config/*.go"
+      run: just config::check
