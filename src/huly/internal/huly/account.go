@@ -46,7 +46,10 @@ func NewAccountClient(accountsURL string) *AccountClient {
 
 func (c *AccountClient) rpc(ctx context.Context, token, method string, params map[string]any, out any) error {
 	body, _ := json.Marshal(map[string]any{"method": method, "params": params})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build %s request: %w", method, err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)

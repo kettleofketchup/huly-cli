@@ -16,7 +16,10 @@ type ServerConfig struct {
 // LoadServerConfig fetches {baseURL}/config.json.
 func LoadServerConfig(ctx context.Context, baseURL string) (ServerConfig, error) {
 	url := strings.TrimRight(baseURL, "/") + "/config.json"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return ServerConfig{}, fmt.Errorf("build config.json request: %w", err)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return ServerConfig{}, fmt.Errorf("load config.json: %w", err)
