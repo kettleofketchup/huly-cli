@@ -7,3 +7,4 @@ Task 1: complete (scaffold commit 861603f, builds+vets clean, inherited cmds pre
 Task 3: complete (commit 847f6f0, review clean; MINOR: ids.go cap hint 28→16, defer to final)
 Task 4: complete (commit cfc7ada, review clean; MINOR: Issue.Priority int, String() untested — defer)
 Task 5: complete (commit dd1dfbf, review clean; MINOR: map mutation in NewCreateIssueTx, NewUpdateDocTx no nil-guard on ops, test == "" type-assert — defer)
+Task 6: complete (commit 7364910, verified inline: exact errors.go, builds)
