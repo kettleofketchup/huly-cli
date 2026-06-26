@@ -72,7 +72,7 @@ func (c *RestClient) do(ctx context.Context, method, path string, q url.Values, 
 			return nil, derr
 		}
 		switch resp.StatusCode {
-		case http.StatusOK:
+		case http.StatusOK, http.StatusCreated, http.StatusNoContent:
 			return data, nil
 		case http.StatusUnauthorized:
 			return nil, ErrUnauthorized
