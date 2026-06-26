@@ -9,3 +9,4 @@ Task 4: complete (commit cfc7ada, review clean; MINOR: Issue.Priority int, Strin
 Task 5: complete (commit dd1dfbf, review clean; MINOR: map mutation in NewCreateIssueTx, NewUpdateDocTx no nil-guard on ops, test == "" type-assert — defer)
 Task 6: complete (commit 7364910, verified inline: exact errors.go, builds)
 Task 7: complete (commits b1af69d+daad34a, review clean after fix; IMPORTANT fixed: request-construction error handling; MINOR: LoadServerConfig untested, bearer/kind untested — defer)
+Task 8: complete (commits 4b6f310+e583c55, review clean after fix; IMPORTANT fixed: 201/204 success; MINOR: json.Marshal err ignored, Retry-After date form, test gaps — defer). Phase 2 (client) done.
