@@ -3,6 +3,7 @@ module github.com/kettleofketchup/huly-cli/src/huly
 go 1.25.0
 
 require (
+	github.com/gofrs/flock v0.13.0
 	github.com/golang/snappy v1.0.0
 	github.com/invopop/jsonschema v0.4.0
 	github.com/spf13/cobra v1.8.1
@@ -13,7 +14,6 @@ require (
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
-	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/iancoleman/orderedmap v0.0.0-20190318233801-ac98e3ecb4b0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
