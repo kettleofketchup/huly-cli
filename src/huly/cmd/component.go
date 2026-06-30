@@ -111,7 +111,7 @@ var componentCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		id, err := createComponent(cmd.Context(), rc, pr.ID, cr.Account, label, compDesc, compLead)
+		id, err := createComponent(cmd.Context(), rc, pr.ID, pr.Identifier, cr.Account, label, compDesc, compLead)
 		if err != nil {
 			return err
 		}
@@ -131,7 +131,7 @@ func listComponents(ctx context.Context, rc *huly.RestClient, projectRef string)
 }
 
 // createComponent posts a TxCreateDoc for a Component and writes through to the local cache.
-func createComponent(ctx context.Context, rc *huly.RestClient, projectRef, account, label, desc, lead string) (string, error) {
+func createComponent(ctx context.Context, rc *huly.RestClient, projectRef, projectIdent, account, label, desc, lead string) (string, error) {
 	attrs := map[string]any{"label": label}
 	if desc != "" {
 		attrs["description"] = desc
@@ -145,7 +145,7 @@ func createComponent(ctx context.Context, rc *huly.RestClient, projectRef, accou
 	}
 	id := tx["objectId"].(string)
 	_ = cache.Update(func(c *cache.Cache) {
-		c.Components = append(c.Components, cache.ComponentRec{ID: id, Project: projectRef, Label: label})
+		c.Components = append(c.Components, cache.ComponentRec{ID: id, Project: projectIdent, Label: label})
 	})
 	return id, nil
 }
