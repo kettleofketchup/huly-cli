@@ -13,3 +13,4 @@ Task 8: complete (commits 4b6f310+e583c55, review clean after fix; IMPORTANT fix
 Task 9: complete (commit b7b3c34, review clean; MINOR: cred-file TOCTOU umask window before chmod [security, consider hardening], os.IsNotExist vs errors.Is, test discards Save err — defer to final)
 Task 10: complete (commit 0bebe6f, review clean; MINOR: whoami dup newClient, bare err wrap in runLogin — defer)
 Task 11: complete (commit ee24d21, verified inline: exact auth.go, builds+vets+tests). Phase 3 (auth) done.
+Task 12: complete (commit 109fa55, verified inline: exact output.go, tests+vet pass)
