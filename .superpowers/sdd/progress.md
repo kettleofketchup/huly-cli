@@ -22,3 +22,4 @@ Task 17: complete (commit 1351aa2, verified inline: exact project.go, tests+vet 
 Task 18: complete (commits b04f09b+b6ecd48; IMPORTANT fixed: component cache write-through now stores human project identifier, consistent with sync)
 Task 19: complete (commit 6de3b34, verified inline: createMilestone correct, identifier write-through, target-date parse, --output, tests+vet pass)
 Task 20: complete (commit ca78b29, review clean; MINOR: issue write-through omits Project [if fixed, store pr.Identifier NOT projectRef to match components/sync], test doesn't assert attachedToClass — defer to final). Phase 6 done.
+Task 21: complete (commit 421447a, review clean; MINOR: projectFilter branch untested, non-deterministic sync slice order — defer). All code tasks (3-21) done.
