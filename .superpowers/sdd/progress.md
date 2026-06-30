@@ -19,3 +19,4 @@ Task 14: complete (commit 87e2423, review clean; MINOR: tmp leak on rename failu
 Task 15: complete (commit 0659796, verified inline: filterPrefix safe, tests+vet pass). Phase 5 done.
 Task 16: complete (commit 450c1f1, review clean; MINOR: cache.Load err discarded, prune branch untested — defer)
 Task 17: complete (commit 1351aa2, verified inline: exact project.go, tests+vet pass, completion resolves cleanly)
+Task 18: complete (commits b04f09b+b6ecd48; IMPORTANT fixed: component cache write-through now stores human project identifier, consistent with sync)
