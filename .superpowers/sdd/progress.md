@@ -14,3 +14,4 @@ Task 9: complete (commit b7b3c34, review clean; MINOR: cred-file TOCTOU umask wi
 Task 10: complete (commit 0bebe6f, review clean; MINOR: whoami dup newClient, bare err wrap in runLogin — defer)
 Task 11: complete (commit ee24d21, verified inline: exact auth.go, builds+vets+tests). Phase 3 (auth) done.
 Task 12: complete (commit 109fa55, verified inline: exact output.go, tests+vet pass)
+Task 13: complete (commit 135356f, review clean; MINOR: Log field no mapstructure tag, rootCmd PersistentPreRunE skipped if subcmd defines own [none do] — defer). Phase 4 done.
