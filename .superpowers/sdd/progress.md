@@ -11,3 +11,4 @@ Task 6: complete (commit 7364910, verified inline: exact errors.go, builds)
 Task 7: complete (commits b1af69d+daad34a, review clean after fix; IMPORTANT fixed: request-construction error handling; MINOR: LoadServerConfig untested, bearer/kind untested — defer)
 Task 8: complete (commits 4b6f310+e583c55, review clean after fix; IMPORTANT fixed: 201/204 success; MINOR: json.Marshal err ignored, Retry-After date form, test gaps — defer). Phase 2 (client) done.
 Task 9: complete (commit b7b3c34, review clean; MINOR: cred-file TOCTOU umask window before chmod [security, consider hardening], os.IsNotExist vs errors.Is, test discards Save err — defer to final)
+Task 10: complete (commit 0bebe6f, review clean; MINOR: whoami dup newClient, bare err wrap in runLogin — defer)
