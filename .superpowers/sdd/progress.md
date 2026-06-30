@@ -16,3 +16,4 @@ Task 11: complete (commit ee24d21, verified inline: exact auth.go, builds+vets+t
 Task 12: complete (commit 109fa55, verified inline: exact output.go, tests+vet pass)
 Task 13: complete (commit 135356f, review clean; MINOR: Log field no mapstructure tag, rootCmd PersistentPreRunE skipped if subcmd defines own [none do] — defer). Phase 4 done.
 Task 14: complete (commit 87e2423, review clean; MINOR: tmp leak on rename failure, os.IsNotExist — defer)
+Task 15: complete (commit 0659796, verified inline: filterPrefix safe, tests+vet pass). Phase 5 done.
