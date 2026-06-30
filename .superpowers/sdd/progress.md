@@ -20,3 +20,4 @@ Task 15: complete (commit 0659796, verified inline: filterPrefix safe, tests+vet
 Task 16: complete (commit 450c1f1, review clean; MINOR: cache.Load err discarded, prune branch untested — defer)
 Task 17: complete (commit 1351aa2, verified inline: exact project.go, tests+vet pass, completion resolves cleanly)
 Task 18: complete (commits b04f09b+b6ecd48; IMPORTANT fixed: component cache write-through now stores human project identifier, consistent with sync)
+Task 19: complete (commit 6de3b34, verified inline: createMilestone correct, identifier write-through, target-date parse, --output, tests+vet pass)
