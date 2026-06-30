@@ -18,3 +18,4 @@ Task 13: complete (commit 135356f, review clean; MINOR: Log field no mapstructur
 Task 14: complete (commit 87e2423, review clean; MINOR: tmp leak on rename failure, os.IsNotExist — defer)
 Task 15: complete (commit 0659796, verified inline: filterPrefix safe, tests+vet pass). Phase 5 done.
 Task 16: complete (commit 450c1f1, review clean; MINOR: cache.Load err discarded, prune branch untested — defer)
+Task 17: complete (commit 1351aa2, verified inline: exact project.go, tests+vet pass, completion resolves cleanly)
