@@ -1,0 +1,11 @@
+log:
+  level: info
+  format: text
+# Default Huly base URL used by `huly login` when --url is omitted
+server:
+  url: https://huly.example.com
+# Default --project for commands when the flag is omitted
+defaults:
+  project: PROJ
+# Default output format: table | json
+output: table

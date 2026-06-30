@@ -12,7 +12,20 @@ import (
 //   - environment variables (prefixed with HULY_)
 //   - JSON schema (run: just config::schema)
 type Config struct {
-	Log LogConfig `yaml:"log" json:"log" jsonschema:"title=Logging Configuration,description=Configure log output"`
+	Log      LogConfig      `yaml:"log"      json:"log"      jsonschema:"title=Logging Configuration,description=Configure log output"`
+	Server   ServerConfig   `yaml:"server"   json:"server"   mapstructure:"server"`
+	Defaults DefaultsConfig `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
+	Output   string         `yaml:"output"   json:"output"   mapstructure:"output" jsonschema:"enum=table,enum=json,default=table"`
+}
+
+// ServerConfig holds server connection settings.
+type ServerConfig struct {
+	URL string `yaml:"url" json:"url" mapstructure:"url" jsonschema:"description=Default Huly base URL for login"`
+}
+
+// DefaultsConfig holds default values for command flags.
+type DefaultsConfig struct {
+	Project string `yaml:"project" json:"project" mapstructure:"project" jsonschema:"description=Default project identifier"`
 }
 
 // LogConfig controls logging behavior.
@@ -25,6 +38,7 @@ type LogConfig struct {
 func Defaults() {
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", "text")
+	viper.SetDefault("output", "table")
 }
 
 // SetupEnv configures viper to read environment variables.
