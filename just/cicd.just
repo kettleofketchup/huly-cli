@@ -55,4 +55,4 @@ docker-push tag=DOCKER_TAG: (docker tag)
 pages:
     @echo "Building documentation..."
     cd {{ PROJECT_ROOT }} && uv sync
-    cd {{ PROJECT_ROOT }} && uv run mkdocs build
+    cd {{ PROJECT_ROOT }} && uv run zensical build --clean

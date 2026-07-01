@@ -1,15 +1,14 @@
-# Documentation recipes
-# Call as: just docs::serve, just docs::build, etc.
+# Documentation recipes — call as: just docs::serve, just docs::build
 
-# Start MkDocs development server with live reload
+# Start Zensical development server with live reload
 serve:
     @echo "Starting docs server with live reload..."
-    uv run mkdocs serve
+    uv run zensical serve --open
 
-# Build static documentation
+# Build static documentation into ./public
 build:
     @echo "Building documentation..."
-    uv run mkdocs build
+    uv run zensical build --clean
 
 # Clean generated documentation
 clean:

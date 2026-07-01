@@ -1,0 +1,56 @@
+[project]
+site_name = "huly"
+site_description = "Self-updating CLI for Huly tracker planning"
+site_url = "https://kettleofketchup.github.io/huly-cli/"
+repo_url = "https://github.com/kettleofketchup/huly-cli"
+repo_name = "kettleofketchup/huly-cli"
+edit_uri = "edit/main/docs/"
+copyright = "&copy; 2026 kettleofketchup"
+docs_dir = "docs"
+site_dir = "public"          # GitHub Pages workflow uploads ./public
+use_directory_urls = true
+
+nav = [
+  {"Home" = "index.md"},
+  {"Usage" = "usage.md"},
+  {"Authentication" = "auth.md"},
+  {"Planning commands" = "planning.md"},
+  {"Components" = "components.md"},
+  {"Cache sync" = "cache.md"},
+  {"Shell completion" = "completion.md"},
+]
+
+[project.theme]
+variant = "classic"          # Material-compatible look; matches the old mkdocs theme
+features = [
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.tracking",
+  "navigation.tabs",
+  "navigation.sections",
+  "navigation.top",
+  "toc.follow",
+  "search.suggest",
+  "search.highlight",
+  "content.code.copy",
+  "content.tabs.link",
+]
+
+[project.theme.palette]
+scheme = "slate"
+primary = "black"
+accent = "blue"
+
+[project.theme.font]
+text = "Roboto"
+code = "Roboto Mono"
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+
+[project.markdown_extensions.toc]
+permalink = true
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/kettleofketchup/huly-cli"

@@ -1,58 +1,45 @@
-# huly-cli
+# huly
 
-Welcome to the huly-cli documentation.
+`huly` is a self-updating command-line client for [Huly](https://huly.io) tracker
+planning. It manages **projects, issues, milestones, and components**, with
+session + app-token authentication and cache-backed shell completion.
 
-## Quick Start
+!!! tip "New here?"
+    1. [Install](#install) the binary, 2. [authenticate](auth.md), 3. run
+    `huly cache sync` to power TAB completion, then 4. start
+    [planning](planning.md).
 
-### Installation
+## Install
 
-```sh
-# Bootstrap environment (installs just if needed)
-./dev
+=== "Go install"
 
-# Build from source
-just build
+    ```sh
+    go install github.com/kettleofketchup/huly-cli/src/huly@latest
+    ```
 
-# Run
-./bin/huly --help
-```
+=== "From source"
 
-### Version
+    ```sh
+    git clone https://github.com/kettleofketchup/huly-cli
+    cd huly-cli && just build
+    ./bin/huly version
+    ```
 
-```sh
-./bin/huly version
-```
+=== "Self-update"
 
-## Development
+    ```sh
+    huly update
+    ```
 
-### Build
-
-```sh
-just build          # Build binary
-just test           # Run tests
-just lint           # Run linter
-```
-
-### Documentation
+## Quick start
 
 ```sh
-just docs::serve    # Start dev server
-just docs::build    # Build static site
+huly login --url https://huly.example.com --email you@example.com --workspace myws
+huly cache sync
+huly project list
+huly issue create --project PROJ --title "Fix the thing" --priority High
 ```
 
-## Project Structure
-
-```
-huly-cli/
-├── src/huly/    # Go source code
-│   ├── cmd/                # CLI commands
-│   ├── internal/           # Private packages
-│   └── version/            # Version info
-├── docs/                   # Documentation
-├── just/                   # Build recipes (modules)
-└── docker/                 # Docker configuration
-```
-
-
-{% include-markdown "../README.md" start="<!--doc-start-->" end="<!--doc-end-->" %}
-
+!!! warning "Run `cache sync` after logging in"
+    Shell completion reads **only** the local cache (never the network), so TAB
+    completion is empty until you run `huly cache sync` at least once.
