@@ -24,3 +24,4 @@ Task 19: complete (commit 6de3b34, verified inline: createMilestone correct, ide
 Task 20: complete (commit ca78b29, review clean; MINOR: issue write-through omits Project [if fixed, store pr.Identifier NOT projectRef to match components/sync], test doesn't assert attachedToClass — defer to final). Phase 6 done.
 Task 21: complete (commit 421447a, review clean; MINOR: projectFilter branch untested, non-deterministic sync slice order — defer). All code tasks (3-21) done.
 Task 22: complete (commit 7c5f9bd, README accurate; verified: full suite+vet pass, completion smoke clean exit 0, --help lists 13 commands)
+Task 23: complete (commit 1f831ca, Zensical build OK, public/ gitignored, Go green; NOTE: docs/superpowers specs render into site - minor, exclude later). Phase 7 done. All code+docs tasks complete.
