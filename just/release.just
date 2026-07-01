@@ -7,7 +7,7 @@ DIST_DIR := justfile_directory() + "/dist"
 VERSION := `git describe --tags --always 2>/dev/null || echo "dev"`
 COMMIT := `git rev-parse --short HEAD 2>/dev/null || echo "unknown"`
 DATE := `date -u +%Y-%m-%dT%H:%M:%SZ`
-VERSION_PKG := "gitlab.lan/huly-cli/src/huly/version"
+VERSION_PKG := "github.com/kettleofketchup/huly-cli/src/huly/version"
 LDFLAGS := "-s -w -X " + VERSION_PKG + ".Version=" + VERSION + " -X " + VERSION_PKG + ".Commit=" + COMMIT + " -X " + VERSION_PKG + ".BuildDate=" + DATE
 
 # Build for all platforms

@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/kettleofketchup/huly-cli/src/huly/internal/creds"
+	"github.com/kettleofketchup/huly-cli/src/huly/internal/huly"
 )
 
 var (
@@ -23,12 +26,19 @@ var authSetTokenCmd = &cobra.Command{
 		if authEndpoint == "" || authWorkspace == "" || authToken == "" {
 			return fmt.Errorf("--endpoint, --workspace and --token are required")
 		}
-		return runSetToken(authEndpoint, authWorkspace, authToken)
+		return runSetToken(cmd.Context(), authEndpoint, authWorkspace, authToken)
 	},
 }
 
-func runSetToken(endpoint, workspace, token string) error {
-	return creds.Save(creds.Credentials{Endpoint: endpoint, Workspace: workspace, Token: token})
+func runSetToken(ctx context.Context, endpoint, workspace, token string) error {
+	rc := huly.NewRestClient(endpoint, workspace, token)
+	account := ""
+	if acct, err := rc.GetAccount(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not verify token via account lookup: %v\n", mapAuthErr(err))
+	} else {
+		account = acct.UUID
+	}
+	return creds.Save(creds.Credentials{Endpoint: endpoint, Workspace: workspace, Token: token, Account: account})
 }
 
 func init() {

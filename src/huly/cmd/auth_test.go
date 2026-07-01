@@ -1,7 +1,11 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/kettleofketchup/huly-cli/src/huly/internal/creds"
@@ -9,14 +13,30 @@ import (
 )
 
 func TestRunSetToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/account/ws" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"uuid": "acc-9", "role": "owner"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HULY_TOKEN", "")
-	if err := runSetToken("https://e/api", "ws", "tok"); err != nil {
+	t.Setenv("HULY_ENDPOINT", "")
+	t.Setenv("HULY_WORKSPACE", "")
+
+	if err := runSetToken(context.Background(), srv.URL, "ws", "tok"); err != nil {
 		t.Fatalf("runSetToken: %v", err)
 	}
 	got, _ := creds.Load()
-	if got.Token != "tok" || got.Workspace != "ws" || got.Endpoint != "https://e/api" {
+	if got.Token != "tok" || got.Workspace != "ws" || got.Endpoint != srv.URL {
 		t.Fatalf("creds = %+v", got)
+	}
+	if got.Account != "acc-9" {
+		t.Fatalf("expected Account=acc-9, got %q", got.Account)
 	}
 }
 
