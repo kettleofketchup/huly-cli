@@ -45,6 +45,28 @@ accent = "blue"
 text = "Roboto"
 code = "Roboto Mono"
 
+# NOTE: declaring ANY [project.markdown_extensions.*] table opts OUT of
+# Zensical's auto-enabled default set, so every extension the docs use must be
+# listed explicitly here (admonitions, content tabs, superfences, etc.).
+[project.markdown_extensions.admonition]
+
+[project.markdown_extensions.attr_list]
+
+[project.markdown_extensions.md_in_html]
+
+[project.markdown_extensions.def_list]
+
+[project.markdown_extensions.pymdownx.superfences]
+
+[project.markdown_extensions.pymdownx.details]
+
+[project.markdown_extensions.pymdownx.inlinehilite]
+
+[project.markdown_extensions.pymdownx.snippets]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+
 [project.markdown_extensions.pymdownx.highlight]
 anchor_linenums = true
 
