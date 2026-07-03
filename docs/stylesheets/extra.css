@@ -1,0 +1,154 @@
+/* Dark-purple theme.
+ *
+ * Shift the slate (dark) scheme toward purple and make the background darker
+ * than Zensical's default grey. Header/accent come from the deep-purple/purple
+ * palette in zensical.toml. */
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 280; /* purple-tinted greys */
+
+  /* Backgrounds — darker than default, faint purple tint */
+  --md-default-bg-color:          hsl(278, 30%, 6%);
+  --md-default-bg-color--light:   hsl(278, 26%, 9%);
+  --md-default-bg-color--lighter: hsl(278, 22%, 13%);
+  --md-default-bg-color--lightest: hsl(278, 20%, 18%);
+
+  /* Cards / code surfaces sit slightly above the page */
+  --md-code-bg-color:    hsl(278, 24%, 11%);
+  --md-footer-bg-color:  hsl(278, 32%, 5%);
+}
+
+/* Blend the header + tabs into the page background (zensical.org style): no
+ * colored bar, just a hairline divider. The header stays opaque (page-colored)
+ * so content doesn't bleed through when scrolling. */
+.md-header {
+  background-color: hsla(278, 30%, 6%, 0.7);   /* translucent page bg */
+  color: var(--md-default-fg-color);
+  box-shadow: none;
+  border-bottom: 1px solid hsla(278, 35%, 55%, 0.16);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+}
+.md-tabs {
+  background-color: hsla(278, 30%, 6%, 0.6);
+  color: var(--md-default-fg-color);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+}
+.md-header--shadow {
+  box-shadow: none;
+}
+/* Search field: subtle raised surface instead of the bright primary tint */
+[data-md-color-scheme="slate"] .md-search__form {
+  background-color: hsl(278, 22%, 16%);
+}
+[data-md-color-scheme="slate"] .md-search__form:hover {
+  background-color: hsl(278, 22%, 20%);
+}
+
+/* Top tabs: purple text + masked icons (colored by the text via currentColor).
+ * The first tab (Home) always gets an icon; the href-matched rules below are
+ * inert until the site grows a matching section — add more by pairing a
+ * `.md-tabs__link[href...]::before` selector with a `--tab-icon` url. Icon
+ * urls are relative to this stylesheet so they work under any site prefix. */
+.md-tabs__link {
+  color: hsl(280, 38%, 80%);
+  opacity: 1;
+}
+.md-tabs__item--active .md-tabs__link,
+.md-tabs__link--active {
+  color: var(--md-accent-fg-color);
+}
+.md-tabs__item:first-child .md-tabs__link::before,
+.md-tabs__link[href$="/gitlab/"]::before,
+.md-tabs__link[href*="/guides/"]::before,
+.md-tabs__link[href*="/services/"]::before,
+.md-tabs__link[href$="/network/"]::before {
+  content: "";
+  display: inline-block;
+  width: 1.05em;
+  height: 1.05em;
+  margin-right: 0.4em;
+  vertical-align: -0.2em;
+  background-color: currentColor;
+  -webkit-mask: var(--tab-icon) center / contain no-repeat;
+  mask: var(--tab-icon) center / contain no-repeat;
+}
+.md-tabs__item:first-child .md-tabs__link { --tab-icon: url("../assets/icons/home.svg"); }
+.md-tabs__link[href$="/gitlab/"]  { --tab-icon: url("../assets/icons/gitlab.svg"); }
+.md-tabs__link[href*="/guides/"]  { --tab-icon: url("../assets/icons/guides.svg"); }
+.md-tabs__link[href*="/services/"] { --tab-icon: url("../assets/icons/services.svg"); }
+.md-tabs__link[href$="/network/"] { --tab-icon: url("../assets/icons/network.svg"); }
+
+/* Content tabs — make them highly visible (bordered box, label bar, purple
+ * pill on the active tab). */
+.md-typeset .tabbed-set {
+  border: 1px solid hsla(280, 40%, 50%, 0.35);
+  border-radius: 0.35rem;
+  margin: 1.2em 0;
+}
+.md-typeset .tabbed-labels {
+  background: hsla(280, 25%, 16%, 0.7);
+  border-bottom: 2px solid hsla(280, 45%, 50%, 0.45);
+  border-radius: 0.35rem 0.35rem 0 0;
+  box-shadow: none;
+  padding: 0.25rem 0.3rem 0;
+}
+.md-typeset .tabbed-labels > label {
+  font-weight: 700;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  color: hsl(280, 22%, 72%);
+  padding: 0.55em 1.1em;
+}
+.md-typeset .tabbed-content {
+  padding: 0.7rem 1rem 0.2rem;
+}
+/* Active tab → purple pill (cover up to 8 tabs, e.g. Linux/Windows/macOS) */
+.md-typeset .tabbed-set > input:nth-child(1):checked ~ .tabbed-labels > label:nth-child(1),
+.md-typeset .tabbed-set > input:nth-child(2):checked ~ .tabbed-labels > label:nth-child(2),
+.md-typeset .tabbed-set > input:nth-child(3):checked ~ .tabbed-labels > label:nth-child(3),
+.md-typeset .tabbed-set > input:nth-child(4):checked ~ .tabbed-labels > label:nth-child(4),
+.md-typeset .tabbed-set > input:nth-child(5):checked ~ .tabbed-labels > label:nth-child(5),
+.md-typeset .tabbed-set > input:nth-child(6):checked ~ .tabbed-labels > label:nth-child(6),
+.md-typeset .tabbed-set > input:nth-child(7):checked ~ .tabbed-labels > label:nth-child(7),
+.md-typeset .tabbed-set > input:nth-child(8):checked ~ .tabbed-labels > label:nth-child(8) {
+  background: hsl(280, 28%, 36%);   /* muted purple, not the bright accent */
+  color: hsl(280, 25%, 94%);
+  border-radius: 0.25rem 0.25rem 0 0;
+}
+
+/* Text selection uses the purple accent, not neutral grey */
+::selection {
+  background: hsla(280, 55%, 50%, 0.40);
+}
+
+/* Larger logo in the top-left header */
+.md-header__button.md-logo {
+  padding: 0.2rem 0.4rem;
+}
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 2.4rem;
+  width: auto;
+}
+
+/* Titles: muted purple text */
+[data-md-color-scheme="slate"] .md-header__title {
+  color: hsl(280, 38%, 76%);
+}
+[data-md-color-scheme="slate"] .md-typeset h1 {
+  color: hsl(280, 38%, 76%);
+}
+[data-md-color-scheme="slate"] .md-typeset h2 {
+  color: hsl(280, 30%, 72%);
+}
+
+/* Card grids: a touch of elevation + purple hover border */
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li {
+  background: hsl(278, 24%, 10%);
+  border-color: hsl(278, 22%, 20%);
+}
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--md-accent-fg-color);
+}
