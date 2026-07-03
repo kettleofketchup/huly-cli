@@ -36,6 +36,16 @@ huly login --url https://huly.example.com --email user@example.com --workspace m
 
 You will be prompted for your password. On success, credentials are saved to `<config-dir>/huly/credentials.yaml` (mode 0600). The config dir follows the OS convention: `~/.config` on Linux, `~/Library/Application Support` on macOS, `%AppData%` on Windows.
 
+### One-time code login (external / SSO accounts)
+
+If your account uses external login (Google, GitHub, SSO) it has no password. Log in with an emailed one-time code instead:
+
+```sh
+huly login --otp --url https://huly.example.com --email user@example.com --workspace myworkspace
+```
+
+`huly` emails you a code, you paste it, and it exchanges the code for a session token — no password needed.
+
 ### Non-interactive token
 
 For CI or scripted use, store a pre-generated app/API token directly:

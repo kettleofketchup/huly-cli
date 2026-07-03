@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -17,17 +19,22 @@ var (
 	loginURL       string
 	loginEmail     string
 	loginWorkspace string
+	loginOTP       bool
 )
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
-	Short: "Log in to a Huly workspace (interactive password prompt)",
+	Short: "Log in to a Huly workspace (password, or --otp for external/SSO accounts)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if loginURL == "" {
 			loginURL = viper.GetString("server.url") // set by config (Task 13); empty until then
 		}
 		if loginURL == "" || loginEmail == "" || loginWorkspace == "" {
 			return fmt.Errorf("--url, --email and --workspace are required")
+		}
+		if loginOTP {
+			// Password-free path for external-login (OAuth/SSO) accounts.
+			return runLoginOTP(cmd.Context(), loginURL, loginEmail, loginWorkspace, promptCode)
 		}
 		fmt.Fprint(os.Stderr, "Password: ")
 		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
@@ -37,6 +44,48 @@ var loginCmd = &cobra.Command{
 		}
 		return runLogin(cmd.Context(), loginURL, loginEmail, string(pw), loginWorkspace)
 	},
+}
+
+// promptCode reads a one-time code from stdin (prompt on stderr).
+func promptCode() (string, error) {
+	fmt.Fprint(os.Stderr, "Enter the code sent to your email: ")
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(line), nil
+}
+
+// runLoginOTP performs the email one-time-code login flow: request a code,
+// read it, exchange it for a token, select the workspace, and persist creds.
+func runLoginOTP(ctx context.Context, baseURL, email, workspace string, codeFn func() (string, error)) error {
+	sc, err := huly.LoadServerConfig(ctx, baseURL)
+	if err != nil {
+		return err
+	}
+	ac := huly.NewAccountClient(sc.AccountsURL)
+	if _, err := ac.LoginOtp(ctx, email); err != nil {
+		return fmt.Errorf("request otp: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "A one-time login code was sent to %s.\n", email)
+	code, err := codeFn()
+	if err != nil {
+		return fmt.Errorf("read code: %w", err)
+	}
+	li, err := ac.ValidateOtp(ctx, email, code)
+	if err != nil {
+		return fmt.Errorf("validate otp: %w", err)
+	}
+	ws, err := ac.SelectWorkspace(ctx, li.Token, workspace)
+	if err != nil {
+		return fmt.Errorf("select workspace: %w", err)
+	}
+	return creds.Save(creds.Credentials{
+		Endpoint:  ws.Endpoint,
+		Workspace: ws.Workspace,
+		Token:     ws.Token,
+		Account:   li.Account,
+	})
 }
 
 // runLogin performs the full login + selectWorkspace + persist flow.
@@ -97,5 +146,6 @@ func init() {
 	loginCmd.Flags().StringVar(&loginURL, "url", "", "Huly base URL (defaults to server.url in config)")
 	loginCmd.Flags().StringVar(&loginEmail, "email", "", "account email")
 	loginCmd.Flags().StringVar(&loginWorkspace, "workspace", "", "workspace url/name")
+	loginCmd.Flags().BoolVar(&loginOTP, "otp", false, "log in with an emailed one-time code (for external/SSO accounts with no password)")
 	rootCmd.AddCommand(loginCmd, logoutCmd, whoamiCmd)
 }

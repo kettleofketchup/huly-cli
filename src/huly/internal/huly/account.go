@@ -74,6 +74,27 @@ func (c *AccountClient) Login(ctx context.Context, email, password string) (Logi
 	return li, err
 }
 
+// OtpInfo is the result of requesting a one-time login code.
+type OtpInfo struct {
+	Sent    bool  `json:"sent"`
+	RetryOn int64 `json:"retryOn"`
+}
+
+// LoginOtp requests a one-time login code be emailed to the account. This is the
+// password-free path for accounts that use external (OAuth/SSO) login.
+func (c *AccountClient) LoginOtp(ctx context.Context, email string) (OtpInfo, error) {
+	var oi OtpInfo
+	err := c.rpc(ctx, "", "loginOtp", map[string]any{"email": email}, &oi)
+	return oi, err
+}
+
+// ValidateOtp exchanges an emailed one-time code for a login token.
+func (c *AccountClient) ValidateOtp(ctx context.Context, email, code string) (LoginInfo, error) {
+	var li LoginInfo
+	err := c.rpc(ctx, "", "validateOtp", map[string]any{"email": email, "code": code}, &li)
+	return li, err
+}
+
 func (c *AccountClient) SelectWorkspace(ctx context.Context, token, workspaceURL string) (WorkspaceLoginInfo, error) {
 	var ws WorkspaceLoginInfo
 	err := c.rpc(ctx, token, "selectWorkspace",
