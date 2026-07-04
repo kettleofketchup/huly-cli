@@ -2,12 +2,12 @@
 # Call as: just git::version
 
 # Tag a release: bump the semver tag, run guards, and push (triggers the
-# tag-gated release CI). Usage: just git::version major|minor|hotfix
-# Set SKIP_TESTS=1 to skip the test gate. Set YES=1 to skip the confirmation.
+# tag-gated release CI). Usage: just git::version major|minor|hotfix [-y]
+# Pass -y (or set YES=1) to skip the confirmation. Set SKIP_TESTS=1 to skip tests.
 [group('git')]
 [group('deploy')]
 [no-cd]
-version bump:
+version bump confirm="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -66,8 +66,8 @@ version bump:
     NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
     echo "New version: $NEW_TAG ({{ bump }} bump from $LATEST)"
 
-    # Confirm (unless YES=1) before creating a release-triggering tag.
-    if [[ "${YES:-0}" != "1" ]]; then
+    # Confirm before creating a release-triggering tag, unless -y / YES=1.
+    if [[ "{{ confirm }}" != "-y" && "{{ confirm }}" != "-Y" && "{{ confirm }}" != "yes" && "${YES:-0}" != "1" ]]; then
         read -r -p "Tag and push $NEW_TAG? This triggers the release build. [y/N] " reply
         if [[ "$reply" != "y" && "$reply" != "Y" ]]; then
             echo "Aborted."

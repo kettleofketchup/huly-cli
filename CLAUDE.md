@@ -70,8 +70,8 @@ just git::version major     # v1.2.3 -> v2.0.0
 
 `just git::version` guards the release: it aborts on a dirty tree or unpushed
 commits, runs `go test ./...`, then prompts before creating and pushing the
-annotated tag. Env overrides: `SKIP_TESTS=1` skips the test gate, `YES=1` skips
-the confirmation prompt (for automation).
+annotated tag. Pass `-y` to skip the prompt (e.g. `just git::version minor -y`).
+Env overrides: `SKIP_TESTS=1` skips the test gate, `YES=1` also skips the prompt.
 
 ## Code Conventions
 
