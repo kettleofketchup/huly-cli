@@ -58,9 +58,20 @@ just docker::push           # Push to registry
 ### Release
 
 ```sh
-just release::all           # Build for all platforms → dist/
+just release::all           # Build for all platforms → dist/ (local cross-compile)
 just release::linux         # Linux only (amd64 + arm64)
+
+# Tag a release: bumps the semver tag and pushes it, which triggers the
+# tag-gated CI (build + docker + release assets huly_<os>_<arch>).
+just git::version hotfix    # v1.2.3 -> v1.2.4 (patch)
+just git::version minor     # v1.2.3 -> v1.3.0
+just git::version major     # v1.2.3 -> v2.0.0
 ```
+
+`just git::version` guards the release: it aborts on a dirty tree or unpushed
+commits, runs `go test ./...`, then prompts before creating and pushing the
+annotated tag. Env overrides: `SKIP_TESTS=1` skips the test gate, `YES=1` skips
+the confirmation prompt (for automation).
 
 ## Code Conventions
 

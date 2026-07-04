@@ -1,8 +1,11 @@
 # Git operations
 # Call as: just git::version
 
-# Bump version tag and push (usage: just git::version major|minor|hotfix)
+# Tag a release: bump the semver tag, run guards, and push (triggers the
+# tag-gated release CI). Usage: just git::version major|minor|hotfix
+# Set SKIP_TESTS=1 to skip the test gate. Set YES=1 to skip the confirmation.
 [group('git')]
+[group('deploy')]
 [no-cd]
 version bump:
     #!/usr/bin/env bash
@@ -13,6 +16,32 @@ version bump:
         echo "Error: argument must be 'major', 'minor', or 'hotfix'"
         echo "Usage: just git::version major|minor|hotfix"
         exit 1
+    fi
+
+    # Guard: working tree must be clean (don't tag a dirty state).
+    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+        echo "Error: working tree has uncommitted changes. Commit or stash first."
+        exit 1
+    fi
+
+    # Guard: local branch must be in sync with origin, so the tag points at a
+    # commit that exists on the remote (the release build checks out the tag).
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    git fetch --quiet origin "$BRANCH" 2>/dev/null || true
+    if git rev-parse --verify --quiet "origin/$BRANCH" >/dev/null; then
+        AHEAD=$(git rev-list --count "origin/$BRANCH..HEAD")
+        if [[ "$AHEAD" -gt 0 ]]; then
+            echo "Error: $AHEAD local commit(s) not pushed to origin/$BRANCH. Run 'git push' first."
+            exit 1
+        fi
+    fi
+
+    # Guard: tests must pass before we cut a release.
+    if [[ "${SKIP_TESTS:-0}" != "1" ]]; then
+        echo "Running tests..."
+        ( cd "{{ justfile_directory() }}/src/huly" && go test ./... )
+    else
+        echo "SKIP_TESTS=1 — skipping test gate."
     fi
 
     # Get latest version tag
@@ -35,9 +64,24 @@ version bump:
     esac
 
     NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
-    echo "New version: $NEW_TAG"
+    echo "New version: $NEW_TAG ({{ bump }} bump from $LATEST)"
 
-    # Create and push tag
+    # Confirm (unless YES=1) before creating a release-triggering tag.
+    if [[ "${YES:-0}" != "1" ]]; then
+        read -r -p "Tag and push $NEW_TAG? This triggers the release build. [y/N] " reply
+        if [[ "$reply" != "y" && "$reply" != "Y" ]]; then
+            echo "Aborted."
+            exit 1
+        fi
+    fi
+
+    # Create and push the annotated tag → fires the tag-gated release CI.
     git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
     git push origin "$NEW_TAG"
-    echo "Tag $NEW_TAG created and pushed"
+    echo "Tag $NEW_TAG created and pushed."
+
+    REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+    if [[ "$REMOTE" == *github.com* ]]; then
+        SLUG=$(echo "$REMOTE" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+        echo "Release build: https://github.com/${SLUG}/actions"
+    fi
