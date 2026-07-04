@@ -18,7 +18,7 @@ jobs:
 
       # The Go module lives under src/huly, so run golangci-lint there.
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.4
           working-directory: src/huly
