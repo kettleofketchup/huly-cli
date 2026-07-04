@@ -58,7 +58,7 @@ func (c *AccountClient) rpc(ctx context.Context, token, method string, params ma
 	if err != nil {
 		return fmt.Errorf("account rpc %s: %w", method, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusUnauthorized {
 		return ErrUnauthorized
 	}

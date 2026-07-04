@@ -19,19 +19,19 @@ func Table(w io.Writer, headers []string, rows [][]string) {
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
 	for i, h := range headers {
 		if i > 0 {
-			fmt.Fprint(tw, "\t")
+			_, _ = fmt.Fprint(tw, "\t")
 		}
-		fmt.Fprint(tw, h)
+		_, _ = fmt.Fprint(tw, h)
 	}
-	fmt.Fprintln(tw)
+	_, _ = fmt.Fprintln(tw)
 	for _, row := range rows {
 		for i, c := range row {
 			if i > 0 {
-				fmt.Fprint(tw, "\t")
+				_, _ = fmt.Fprint(tw, "\t")
 			}
-			fmt.Fprint(tw, c)
+			_, _ = fmt.Fprint(tw, c)
 		}
-		fmt.Fprintln(tw)
+		_, _ = fmt.Fprintln(tw)
 	}
 	_ = tw.Flush()
 }

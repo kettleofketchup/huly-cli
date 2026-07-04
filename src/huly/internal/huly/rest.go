@@ -58,7 +58,7 @@ func (c *RestClient) do(ctx context.Context, method, path string, q url.Values, 
 		}
 		if resp.StatusCode == http.StatusTooManyRequests && attempt < 3 {
 			d := retryAfter(resp.Header)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			select {
 			case <-time.After(d):
 				continue
@@ -67,7 +67,7 @@ func (c *RestClient) do(ctx context.Context, method, path string, q url.Values, 
 			}
 		}
 		data, derr := decodeBody(resp)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if derr != nil {
 			return nil, derr
 		}
@@ -111,7 +111,7 @@ func decodeBody(resp *http.Response) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer zr.Close()
+		defer func() { _ = zr.Close() }()
 		return io.ReadAll(zr)
 	default:
 		return raw, nil

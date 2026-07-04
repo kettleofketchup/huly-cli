@@ -16,7 +16,7 @@ func TestRunSetToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/account/ws" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"uuid": "acc-9", "role": "owner"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"uuid": "acc-9", "role": "owner"})
 			return
 		}
 		http.NotFound(w, r)

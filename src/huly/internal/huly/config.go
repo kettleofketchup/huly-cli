@@ -24,7 +24,7 @@ func LoadServerConfig(ctx context.Context, baseURL string) (ServerConfig, error)
 	if err != nil {
 		return ServerConfig{}, fmt.Errorf("load config.json: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return ServerConfig{}, fmt.Errorf("load config.json: status %d", resp.StatusCode)
 	}
