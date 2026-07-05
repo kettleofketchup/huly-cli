@@ -30,3 +30,11 @@ PUSHED: public repo github.com/kettleofketchup/huly-cli, master (56 commits, nor
 CI: Pages/docs = SUCCESS after enabling GitHub Pages (build_type=workflow); site https://kettleofketchup.github.io/huly-cli/. Dependency Graph = success. ci.yml (Go build/test/docker) NOT triggered — template fires it only on pull_request + push tags v*, not master pushes. Not yet exercised; local suite is green.
 DOCS: zensical.toml aligned to canonical copier-docs template (full extension set + theme + extra.css + icons). Root cause of earlier broken render: hand-written Task 23 config declared only highlight+toc, opting out of zensical auto-defaults. copier-docs upstream already correct - no upstream change needed.
 FEATURE: huly login --otp (email OTP for external/SSO accounts, commit deb6b9e). Added LoginOtp/ValidateOtp to account client + --otp path on login; tests pass; docs updated. Reason: user's Huly account uses external login (no password), so email+password login was impossible.
+
+RELEASE v0.1.0 — GREEN. Running 'just git::version minor' exposed a fully-broken release pipeline; fixed in sequence:
+  1. test job: 'go: no such tool covdata' — go.mod requires go1.25 (via x/sys,x/term,flock) but CI pinned 1.23, forcing a toolchain download that broke -cover. Fixed: setup-go go-version-file: src/huly/go.mod in all jobs.
+  2. lint job: golangci-lint ran at repo root (module is src/huly) AND action@v6 rejects golangci-lint v2. Fixed: action@v7 + working-directory: src/huly + version v2.11.4. Also fixed 10 real errcheck findings in code.
+  3. MISSING release job: build only uploaded a workflow artifact, no GitHub Release assets. Added release job (just release::all + softprops/action-gh-release@v2) publishing huly_<os>_<arch>.
+  4. docker job: 'go mod download' failed on golang:1.23 base (module needs 1.25). Fixed: Dockerfile base -> golang:1.25-bookworm.
+Final: all 5 jobs (lint/test/build/release/docker) green. Release v0.1.0 has 5 platform assets; ghcr image tagged v0.1.0+latest. Self-update functional.
+Also: 'just git::version major|minor|hotfix [-y]' hardened (clean-tree/sync/test guards, -y/YES=1/SKIP_TESTS=1).
