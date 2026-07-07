@@ -28,7 +28,7 @@
 - `src/huly/internal/skills/detect_test.go`
 - `src/huly/internal/skills/install_fs.go` — `writeTree` (embed→disk copy + stamp + atomic swap), `sweepStale`.
 - `src/huly/internal/skills/install_fs_test.go`
-- `src/huly/internal/skills/install.go` — `Status`, `Result`, `InstallOpts`, `Install`, `Update`, `Uninstall`, and the internal `apply`/`doWrite`/`backup`/`restampVersion` helpers.
+- `src/huly/internal/skills/install.go` — `Status`, `Result`, `InstallOpts`, `Install`, `Update`, `Uninstall`, and the internal `apply`/`conflictOrForce`/`finish`/`backup`/`restampVersion` helpers.
 - `src/huly/internal/skills/install_test.go`
 
 ---
@@ -328,6 +328,33 @@ func TestSweepStale(t *testing.T) {
 		t.Fatal("test fixture wrong")
 	}
 }
+
+// Integration: writeTree must sweep a prior crash's orphan .new- dir and still
+// succeed (the crash-recovery path end to end, not sweepStale in isolation).
+func TestWriteTreeSweepsOrphanBeforeWriting(t *testing.T) {
+	sk, _ := Get("huly-issue-tracking")
+	parent := filepath.Join(t.TempDir(), "skills")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(parent, sk.Name)
+	orphan := filepath.Join(parent, "."+sk.Name+".new-DEAD")
+	if err := os.MkdirAll(orphan, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(orphan, "leftover.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTree(sk, dest, "0.2.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Error("orphaned .new- dir from a prior crash was not swept")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "SKILL.md")); err != nil {
+		t.Error("write incomplete with a pre-existing orphan present")
+	}
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -474,6 +501,7 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -671,11 +699,177 @@ func TestDryRunWritesNothing(t *testing.T) {
 		t.Error("dry-run wrote to disk")
 	}
 }
+
+func TestUpToDateRestampsVersionHashNeutral(t *testing.T) {
+	sk, ag := seed(t), agentAt(t)
+	if _, err := Install(sk, ag, InstallOpts{CurrentVersion: "0.2.0"}); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(ag.SkillsDir, sk.Name)
+
+	// An unchanged skill under a newer binary: up-to-date, but provenance
+	// version re-stamped to 0.3.0 WITHOUT moving the content hash.
+	r, err := Update(sk, ag, InstallOpts{CurrentVersion: "0.3.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusUpToDate {
+		t.Fatalf("version-bump update = %q, want up-to-date", r.Status)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dest, "SKILL.md"))
+	fm, _ := Parse(raw)
+	if fm.Version != "0.3.0" {
+		t.Errorf("stamped version = %q, want 0.3.0", fm.Version)
+	}
+	// Hash-neutral proof: a third update at 0.3.0 is still up-to-date (would be
+	// "modified" if the re-stamp had perturbed the hashed body).
+	r3, err := Update(sk, ag, InstallOpts{CurrentVersion: "0.3.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r3.Status != StatusUpToDate {
+		t.Fatalf("third update = %q, want up-to-date (no churn)", r3.Status)
+	}
+}
+
+func TestAdoptedMissingContentHash(t *testing.T) {
+	sk, ag := seed(t), agentAt(t)
+	o := InstallOpts{CurrentVersion: "0.2.0"}
+	if _, err := Install(sk, ag, o); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(ag.SkillsDir, sk.Name)
+	md := filepath.Join(dest, "SKILL.md")
+
+	// Simulate an older huly that stamped managed_by/version but no content_hash,
+	// with the body still matching the shipped skill.
+	raw, _ := os.ReadFile(md)
+	stripped, err := Stamp(raw, "huly-cli", "0.2.0", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(md, stripped, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if fm, _ := Parse(stripped); fm.ContentHash != "" {
+		t.Fatalf("fixture: content_hash = %q, want empty", fm.ContentHash)
+	}
+
+	r, err := Update(sk, ag, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusUpdated || r.Reason != "adopted" {
+		t.Fatalf("adopt = %q/%q, want updated/adopted", r.Status, r.Reason)
+	}
+	emb, _ := sk.contentHash()
+	after, _ := Parse(mustRead(t, md))
+	if after.ContentHash != emb {
+		t.Errorf("adopted content_hash = %q, want %q", after.ContentHash, emb)
+	}
+	onDisk, _ := ContentHash(os.DirFS(dest))
+	if onDisk != emb {
+		t.Errorf("adopted tree hash %s != embedded %s", onDisk, emb)
+	}
+}
+
+// Pre-hash install whose body the user edited: adopt must NOT clobber it — the
+// state is ambiguous (old shipped content vs a user edit), so it is a conflict.
+func TestAdoptedEditedBodyIsConflict(t *testing.T) {
+	sk, ag := seed(t), agentAt(t)
+	o := InstallOpts{CurrentVersion: "0.2.0"}
+	if _, err := Install(sk, ag, o); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(ag.SkillsDir, sk.Name)
+	md := filepath.Join(dest, "SKILL.md")
+	raw, _ := os.ReadFile(md)
+	stripped, err := Stamp(raw, "huly-cli", "0.2.0", "") // pre-hash
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(md, append(stripped, []byte("\nuser edit\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Update(sk, ag, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusConflict || r.Reason != "modified" {
+		t.Fatalf("adopt-edited = %q/%q, want conflict/modified", r.Status, r.Reason)
+	}
+	if !strings.Contains(string(mustRead(t, md)), "user edit") {
+		t.Error("adopt-edited clobbered the user's edit without --force")
+	}
+}
+
+func TestUnreadableForceRepairs(t *testing.T) {
+	sk, ag := seed(t), agentAt(t)
+	dest := filepath.Join(ag.SkillsDir, sk.Name)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "other.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Install(sk, ag, InstallOpts{CurrentVersion: "0.2.0", Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusRepaired || r.Reason != "unreadable" {
+		t.Fatalf("forced unreadable = %q/%q, want repaired/unreadable", r.Status, r.Reason)
+	}
+	if baks, _ := filepath.Glob(dest + ".bak-*"); len(baks) == 0 {
+		t.Error("force did not back up the unreadable dir")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "SKILL.md")); err != nil {
+		t.Error("SKILL.md missing after forced repair")
+	}
+}
+
+func TestForeignForceRepairs(t *testing.T) {
+	sk, ag := seed(t), agentAt(t)
+	dest := filepath.Join(ag.SkillsDir, sk.Name)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "SKILL.md"),
+		[]byte("---\nname: huly-issue-tracking\n---\nsomeone else's\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Install(sk, ag, InstallOpts{CurrentVersion: "0.2.0", Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusRepaired || r.Reason != "foreign" {
+		t.Fatalf("forced foreign = %q/%q, want repaired/foreign", r.Status, r.Reason)
+	}
+	baks, _ := filepath.Glob(dest + ".bak-*")
+	if len(baks) == 0 {
+		t.Fatal("force did not back up the foreign dir")
+	}
+	bakRaw, err := os.ReadFile(filepath.Join(baks[0], "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(bakRaw), "someone else's") {
+		t.Error("backup does not preserve the foreign content")
+	}
+}
+
+func mustRead(t *testing.T, p string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd src/huly && go test ./internal/skills/ -run 'TestInstall|TestUpdate|TestUser|TestForeign|TestUnreadable|TestShipped|TestDryRun' -v`
+Run: `cd src/huly && go test ./internal/skills/ -run 'TestInstall|TestUpdate|TestUser|TestForeign|TestUnreadable|TestShipped|TestDryRun|TestUpToDate|TestAdopted' -v`
 Expected: FAIL — `Install`/`Update`/`Status*`/`Result`/`InstallOpts` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -723,6 +917,9 @@ type InstallOpts struct {
 
 // Install ensures the shipped skill is present and current for the agent.
 // A fresh dest is installed; an up-to-date one is left alone (idempotent).
+// Force overrides the conflict guards (backing up first); on an already
+// up-to-date tree it is a no-op, since up-to-date proves the body+siblings are
+// byte-identical to the embedded tree.
 func Install(sk Skill, ag Agent, o InstallOpts) (Result, error) {
 	return apply(sk, ag, o, false)
 }
@@ -770,8 +967,21 @@ func apply(sk Skill, ag Agent, o InstallOpts, updateOnly bool) (Result, error) {
 	}
 
 	if fm.ContentHash == "" {
-		// Ours but pre-hash (older huly) -> adopt: re-copy + stamp.
-		return finish(sk, dest, o, StatusUpdated, "adopted", res)
+		// Ours but pre-hash (an older huly stamped no content_hash). Adopt
+		// WITHOUT clobbering: if the body already matches the embedded tree,
+		// just stamp content_hash (hash-neutral, no copy). If it diverges, the
+		// state is ambiguous (old shipped content vs a user edit) -> treat as
+		// modified so --force backs up before overwriting.
+		if onDisk == emb {
+			if !o.DryRun {
+				if err := restampVersion(md, raw, o.CurrentVersion, emb); err != nil {
+					return res, err
+				}
+			}
+			res.Status, res.Reason = StatusUpdated, "adopted"
+			return res, nil
+		}
+		return conflictOrForce(sk, dest, o, "modified", res)
 	}
 	if onDisk == fm.ContentHash {
 		// Unmodified.
@@ -822,8 +1032,9 @@ func finish(sk Skill, dest string, o InstallOpts, status Status, reason string, 
 }
 
 // backup renames dest aside so it is recoverable after a forced overwrite.
+// UnixNano avoids a same-instant collision between two backups of one dest.
 func backup(dest string) error {
-	bak := fmt.Sprintf("%s.bak-%d", dest, time.Now().Unix())
+	bak := fmt.Sprintf("%s.bak-%d", dest, time.Now().UnixNano())
 	return os.Rename(dest, bak)
 }
 
@@ -840,8 +1051,8 @@ func restampVersion(md string, raw []byte, version, hash string) error {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd src/huly && go test ./internal/skills/ -run 'TestInstall|TestUpdate|TestUser|TestForeign|TestUnreadable|TestShipped|TestDryRun' -v`
-Expected: PASS (all 7 tests).
+Run: `cd src/huly && go test ./internal/skills/ -run 'TestInstall|TestUpdate|TestUser|TestForeign|TestUnreadable|TestShipped|TestDryRun|TestUpToDate|TestAdopted' -v`
+Expected: PASS (all 12 tests: the original 7 plus up-to-date-restamp, adopt×2, and unreadable/foreign force-repair).
 
 - [ ] **Step 5: Run the whole package**
 
@@ -912,13 +1123,23 @@ func TestUninstallForeignRefusedWithoutForce(t *testing.T) {
 	if _, err := os.Stat(dest); err != nil {
 		t.Error("foreign dir removed without --force")
 	}
-	// With --force it is removed.
+	// With --force it is removed FROM dest, but backed up (not destroyed).
 	rf, err := Uninstall(sk, ag, InstallOpts{CurrentVersion: "0.2.0", Force: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rf.Status != StatusRemoved {
 		t.Errorf("forced foreign uninstall = %q, want removed", rf.Status)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Error("dest still present after forced uninstall")
+	}
+	baks, _ := filepath.Glob(dest + ".bak-*")
+	if len(baks) == 0 {
+		t.Fatal("forced foreign uninstall destroyed the dir without a backup")
+	}
+	if bakRaw, err := os.ReadFile(filepath.Join(baks[0], "SKILL.md")); err != nil || !strings.Contains(string(bakRaw), "foreign") {
+		t.Error("backup does not preserve the foreign content")
 	}
 }
 
@@ -945,6 +1166,8 @@ Append to `src/huly/internal/skills/install.go`:
 
 ```go
 // Uninstall removes a skill from an agent, but only one huly owns unless Force.
+// A foreign/unreadable dir removed under Force is backed up (never destroyed),
+// mirroring install --force and the "never destroy unproven content" rule.
 func Uninstall(sk Skill, ag Agent, o InstallOpts) (Result, error) {
 	dest := filepath.Join(ag.SkillsDir, sk.Name)
 	res := Result{Skill: sk.Name, Agent: ag.ID, Path: dest}
@@ -955,21 +1178,37 @@ func Uninstall(sk Skill, ag Agent, o InstallOpts) (Result, error) {
 	}
 
 	ours := false
+	reason := "unreadable" // no/unparseable SKILL.md
 	if raw, err := os.ReadFile(filepath.Join(dest, "SKILL.md")); err == nil {
-		if fm, perr := Parse(raw); perr == nil && fm.ManagedBy == "huly-cli" {
-			ours = true
+		if fm, perr := Parse(raw); perr == nil {
+			if fm.ManagedBy == "huly-cli" {
+				ours = true
+			} else {
+				reason = "foreign"
+			}
 		}
 	}
 	if !ours && !o.Force {
-		res.Status, res.Reason = StatusConflict, "foreign"
+		res.Status, res.Reason = StatusConflict, reason
 		return res, nil
 	}
 	if !o.DryRun {
-		if err := os.RemoveAll(dest); err != nil {
-			return res, err
+		if ours {
+			if err := os.RemoveAll(dest); err != nil {
+				return res, err
+			}
+		} else {
+			// Force-removing a dir we cannot prove is ours: back it up rather
+			// than destroy it.
+			if err := backup(dest); err != nil {
+				return res, err
+			}
 		}
 	}
 	res.Status = StatusRemoved
+	if !ours {
+		res.Reason = reason
+	}
 	return res, nil
 }
 ```
@@ -998,8 +1237,8 @@ git commit -m "feat(skills): uninstall (owned-only unless --force)"
 **Spec coverage (Phase A2 scope):**
 - §3 detection with injectable `Dirs`, opencode via `ConfigHome` (macOS fix), all five agents, `Present` flag → Task 1. ✓
 - §4 tree copy: temp-dir + `RemoveAll` + `Rename` (no bare rename over non-empty dir), `chmod 0755`, `MkdirAll` parent before temp, orphan `.*.new-*` sweep, stamp on write → Task 2. ✓
-- §4 state machine: absent→installed; update-absent→skipped; unreadable/foreign→conflict (unclobbered) / repaired under `--force` with backup; ours+unmodified+same-hash→up-to-date (+ version-only re-stamp); ours+unmodified+diff-hash→updated; ours+edited→conflict/modified / updated+backup under `--force`; missing stored hash→adopt; dry-run writes nothing → Task 3. ✓
-- §4 uninstall: owned→removed; foreign→conflict/removed-under-force; absent→skipped → Task 4. ✓
+- §4 state machine: absent→installed; update-absent→skipped; unreadable/foreign→conflict (unclobbered) / repaired under `--force` with backup (tested: `TestUnreadableForceRepairs`, `TestForeignForceRepairs`); ours+unmodified+same-hash→up-to-date + version-only hash-neutral re-stamp (tested: `TestUpToDateRestampsVersionHashNeutral`); ours+unmodified+diff-hash→updated; ours+edited→conflict/modified / updated+backup under `--force`; missing stored hash→adopt **without clobbering** (stamp-only when body matches, conflict/modified when it diverges — tested: `TestAdoptedMissingContentHash`, `TestAdoptedEditedBodyIsConflict`); dry-run writes nothing → Task 3. ✓
+- §4 uninstall: owned→removed; foreign/unreadable→conflict / removed-under-force **with backup, never destroyed**; absent→skipped → Task 4. ✓
 - `Result{Skill,Agent,Path,Status,Reason}` gives the CLI (Phase B) the reason to pick a token; `Status` values match the spec's ASCII token set. ✓
 
 Not in this plan (correctly — Phase B/C): Cobra commands, flags, `--output json`, exit codes, completion, docs, TUI. The engine returns structured `Result`s; the CLI maps them to tokens/exit codes in Phase B.
