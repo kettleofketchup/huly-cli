@@ -28,7 +28,7 @@ var loginCmd = &cobra.Command{
 	Short: "Log in to a Huly workspace (password, or --otp for external/SSO accounts)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if loginOTP {
-			return runLoginOTPInteractive(cmd.Context())
+			return runLoginOTPInteractive(cmd)
 		}
 		if loginURL == "" {
 			loginURL = viper.GetString("server.url")
@@ -79,10 +79,21 @@ func otpInteractive() bool {
 	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd()))
 }
 
+// otpSaveDefault reports whether the "save to config?" toggle should start
+// on. It defaults ON for a bare `huly login --otp` (nothing to clobber), and
+// defaults OFF when the caller explicitly passed any of --url/--email/
+// --workspace, so a one-off override run doesn't silently persist and
+// overwrite the saved config.
+func otpSaveDefault(cmd *cobra.Command) bool {
+	return !(cmd.Flags().Changed("url") || cmd.Flags().Changed("email") || cmd.Flags().Changed("workspace"))
+}
+
 // runLoginOTPInteractive resolves inputs (TUI when on a terminal, plain
 // stdin otherwise) and runs the OTP login.
-func runLoginOTPInteractive(ctx context.Context) error {
+func runLoginOTPInteractive(cmd *cobra.Command) error {
+	ctx := cmd.Context()
 	prefill := otpPrefill(loginURL, loginEmail, loginWorkspace)
+	prefill.Save = otpSaveDefault(cmd)
 
 	if !otpInteractive() {
 		// Non-interactive: require resolved fields, use the stdin code prompt.
@@ -99,6 +110,8 @@ func runLoginOTPInteractive(ctx context.Context) error {
 	if in.Save {
 		if err := saveOTPInputs(in); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not save config: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "saved url/email/workspace to %s\n", resolveConfigPath())
 		}
 	}
 	return runLoginOTP(ctx, in.URL, in.Email, in.Workspace, promptCodeTUI)

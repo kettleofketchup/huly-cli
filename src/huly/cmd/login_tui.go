@@ -30,7 +30,6 @@ func required(field string) func(string) error {
 // "save to config" toggle, and returns the completed inputs.
 func collectOTPInputs(prefill otpInputs) (otpInputs, error) {
 	in := prefill
-	in.Save = true // default the toggle on
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().Title("Huly URL").Value(&in.URL).Validate(required("URL")),

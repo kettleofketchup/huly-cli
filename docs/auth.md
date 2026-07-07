@@ -33,9 +33,9 @@
     On a real terminal, `--otp` opens an interactive form (URL, email,
     workspace, then the code) prefilled from any `--url`/`--email`/`--workspace`
     flags you pass, falling back to `server.url`, `login.email`, and
-    `login.workspace` in your config file. The form's "Save to config?" toggle
-    (on by default) writes whatever you entered back to those same keys, so
-    the next `huly login --otp` needs no flags at all.
+    `login.workspace` in your config file. The form has a "Save to config?"
+    toggle that writes whatever you entered back to those same keys, so a
+    later `huly login --otp` needs no flags at all.
 
     ```sh
     # first run — fill in the form once, let it save
@@ -45,8 +45,14 @@
     huly login --otp
     ```
 
-    Add `--url`, `--email`, or `--workspace` to override the prefill for a
-    single run without touching the saved config.
+    The toggle's starting value depends on how you invoked the command:
+
+    - Bare `huly login --otp` (no override flags) starts the toggle **on**,
+      since there's nothing already-saved to clobber.
+    - Adding `--url`, `--email`, or `--workspace` starts the toggle **off**,
+      so a one-off run with an override doesn't silently overwrite your saved
+      config. You can still switch it on in the form if you *do* want that
+      value saved.
 
     For scripts and CI (or any non-TTY session), pass `--no-interactive` to
     skip the form and fall back to plain stdin prompts. In this mode
