@@ -91,6 +91,9 @@ func Stamp(src []byte, managedBy, version, contentHash string) ([]byte, error) {
 	}
 	root := doc.Content[0]
 	meta := mappingValue(root, "metadata")
+	if meta.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("frontmatter metadata is not a mapping")
+	}
 	setScalar(meta, "managed_by", managedBy)
 	setScalar(meta, "huly_cli_version", version)
 	setScalar(meta, "content_hash", contentHash)

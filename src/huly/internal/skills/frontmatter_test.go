@@ -115,6 +115,13 @@ func TestStampCreatesMetadataWhenAbsent(t *testing.T) {
 	}
 }
 
+func TestStampRejectsNonMappingMetadata(t *testing.T) {
+	src := []byte("---\nname: x\nmetadata: not-a-map\n---\n# Body\n")
+	if _, err := Stamp(src, "huly-cli", "1.0.0", "sha256:abc"); err == nil {
+		t.Fatal("expected error when metadata is not a mapping")
+	}
+}
+
 // Stamp uses a yaml.Node (not a struct round-trip) precisely to keep keys it
 // does not model. A struct round-trip would silently drop license:/extra:.
 func TestStampPreservesUnmodeledFields(t *testing.T) {
