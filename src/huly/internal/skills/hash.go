@@ -31,7 +31,7 @@ func ContentHash(tree fs.FS) (string, error) {
 			return rerr
 		}
 		content := raw
-		if d.Name() == "SKILL.md" {
+		if p == "SKILL.md" {
 			if _, body, ok := Split(raw); ok {
 				content = body
 			}

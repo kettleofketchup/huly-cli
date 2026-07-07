@@ -105,3 +105,29 @@ func TestContentHashIncludesSiblings(t *testing.T) {
 		t.Error("new sibling file did not change hash")
 	}
 }
+
+func TestContentHashNestedSkillMdNotStripped(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "# Body\n")
+	// A nested file literally named SKILL.md must be hashed verbatim — only the
+	// ROOT SKILL.md's frontmatter is excluded, not a nested one's.
+	nested := filepath.Join(dir, "references", "SKILL.md")
+	if err := os.WriteFile(nested, []byte("---\nname: nested-a\n---\nbody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	base, err := ContentHash(os.DirFS(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Change ONLY the nested file's frontmatter; the hash MUST change.
+	if err := os.WriteFile(nested, []byte("---\nname: nested-b\n---\nbody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := ContentHash(os.DirFS(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == base {
+		t.Error("nested SKILL.md frontmatter was stripped (basename match instead of path match)")
+	}
+}
