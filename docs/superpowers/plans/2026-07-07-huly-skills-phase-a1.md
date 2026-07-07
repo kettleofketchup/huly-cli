@@ -17,7 +17,7 @@
 - **Content hash** = SHA-256 over the `SKILL.md` **body** (frontmatter excluded) plus every non-`SKILL.md` file verbatim, keyed by sorted relative path. The frontmatter is never part of the hash. Prefix the hex digest with `sha256:`.
 - **Semver helper normalizes internally**: it trims a leading `v` before parsing so a `v`-prefixed value can never zero the major slot. It is display/provenance-only; it never gates upgrades.
 - TDD: write the failing test first, watch it fail, implement minimally, watch it pass, commit. One logical change per commit.
-- Full test suite: `just go::test huly` (runs `go test -race -cover ./...` in `src/huly`). Targeted test during development: `cd src/huly && go test ./internal/<pkg>/ -run <TestName> -v`.
+- Full test suite: `just go::test huly` (runs `go test -race -cover -v ./...` in `src/huly`). Targeted test during development: `cd src/huly && go test ./internal/<pkg>/ -run <TestName> -v` — raw `go test` is allow-listed and unhooked in this repo, so it runs directly.
 - Commit message convention (repo style): `feat(skills): …`, `refactor(semver): …`, etc. No Claude watermark/co-author lines.
 
 ## File Structure
@@ -71,6 +71,11 @@ func TestCompare(t *testing.T) {
 		{"dev", "dev", 0},
 		{"garbage", "0.0.0", 0},         // unparseable -> [0,0,0]
 		{"v1.2.3-4-gabc", "v1.2.3", 0},  // git-describe suffix truncated after patch
+		{"1.2.0", "1.3.0", -1},          // equal major: minor decides
+		{"1.3.0", "1.2.0", 1},
+		{"1.2.3", "1.2.4", -1},          // equal major+minor: patch decides
+		{"1.2.4", "1.2.3", 1},
+		{"2.0.0", "1.9.9", 1},           // major dominates a larger minor/patch
 	}
 	for _, c := range cases {
 		if got := Compare(c.a, c.b); got != c.want {
@@ -447,6 +452,59 @@ func TestStampPreservesBodyAndQuotes(t *testing.T) {
 		t.Error("re-stamp not idempotent")
 	}
 }
+
+// Stamp must create the metadata mapping when the authored skill has none
+// (a legal shape per spec §7). Exercises the create-branch of mappingValue.
+func TestStampCreatesMetadataWhenAbsent(t *testing.T) {
+	src := []byte("---\nname: bare\ndescription: no metadata here\n---\n# Body\n")
+	out, err := Stamp(src, "huly-cli", "1.0.0", "sha256:cafe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fm, err := Parse(out)
+	if err != nil {
+		t.Fatalf("parse stamped: %v", err)
+	}
+	if fm.ManagedBy != "huly-cli" || fm.Version != "1.0.0" || fm.ContentHash != "sha256:cafe" {
+		t.Errorf("metadata not created on stamp: %+v", fm)
+	}
+	if !strings.Contains(string(out), `content_hash: "sha256:cafe"`) {
+		t.Errorf("created content_hash not quoted:\n%s", out)
+	}
+	if _, body, _ := Split(out); string(body) != "# Body\n" {
+		t.Errorf("body changed: %q", body)
+	}
+}
+
+// Stamp uses a yaml.Node (not a struct round-trip) precisely to keep keys it
+// does not model. A struct round-trip would silently drop license:/extra:.
+func TestStampPreservesUnmodeledFields(t *testing.T) {
+	src := []byte("---\n" +
+		"# top comment\n" +
+		"name: sample\n" +
+		"license: MIT\n" + // unmodeled top-level key
+		"description: d\n" +
+		"metadata:\n" +
+		"  managed_by: huly-cli\n" +
+		"  extra: keep-me\n" + // unmodeled metadata key
+		"---\n# Body\n")
+	out, err := Stamp(src, "huly-cli", "0.2.0", "sha256:abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	for _, want := range []string{"license: MIT", "extra: keep-me"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Stamp dropped unmodeled field %q:\n%s", want, s)
+		}
+	}
+	// yaml.v3 comment round-tripping is position-sensitive; if this proves
+	// flaky in practice, keep the unmodeled-field asserts above and relax
+	// this one — those are the load-bearing checks.
+	if !strings.Contains(s, "# top comment") {
+		t.Errorf("Stamp dropped comment:\n%s", s)
+	}
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -532,6 +590,12 @@ func Parse(src []byte) (Frontmatter, error) {
 // emitting the values quoted, preserving the body byte-for-byte and the rest
 // of the frontmatter's key order. It rebuilds only the frontmatter via a
 // yaml.Node so authored keys keep their order.
+//
+// NOTE: only the BODY is byte-preserved. The frontmatter is re-emitted by the
+// yaml encoder, so a hand-wrapped folded ('>-') description collapses onto one
+// line on the first install. This is intentional and harmless: the content
+// hash excludes the frontmatter entirely (see hash.go), so the reflow is
+// cosmetic and never triggers a false "modified".
 func Stamp(src []byte, managedBy, version, contentHash string) ([]byte, error) {
 	front, body, ok := Split(src)
 	if !ok {
@@ -834,6 +898,41 @@ func TestSkillContentHashStable(t *testing.T) {
 		t.Errorf("hash not prefixed: %q", h)
 	}
 }
+
+// Sibling files must be hashed verbatim: an implementation that hashes only
+// SKILL.md would pass TestContentHashExcludesFrontmatter but fail here.
+func TestContentHashIncludesSiblings(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "# Body\n")
+	base, err := ContentHash(os.DirFS(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Editing a sibling file (not SKILL.md) MUST change the hash.
+	if err := os.WriteFile(filepath.Join(dir, "references", "r.md"), []byte("ref edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	edited, err := ContentHash(os.DirFS(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edited == base {
+		t.Error("sibling file edit did not change hash (siblings not hashed verbatim)")
+	}
+
+	// Adding a NEW sibling file MUST also change the hash.
+	if err := os.WriteFile(filepath.Join(dir, "references", "extra.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	added, err := ContentHash(os.DirFS(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added == edited {
+		t.Error("new sibling file did not change hash")
+	}
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -920,7 +1019,7 @@ Expected: PASS.
 - [ ] **Step 5: Run the whole package + module test suite**
 
 Run: `cd src/huly && go test ./... 2>&1 | tail -20`
-Expected: all packages PASS (`internal/skills`, `internal/semver`, `cmd`, and the pre-existing packages). If the just-interceptor blocks raw `go test`, use `just go::test huly` instead.
+Expected: all packages PASS (`internal/skills`, `internal/semver`, `cmd`, and the pre-existing packages). Or run the full suite via `just go::test huly`.
 
 - [ ] **Step 6: Commit**
 
