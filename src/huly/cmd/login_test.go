@@ -10,6 +10,10 @@ import (
 	"github.com/kettleofketchup/huly-cli/src/huly/internal/creds"
 )
 
+// rpcResult wraps a value in the account service's success envelope, matching
+// the real server (which returns {"result": <data>}, not the bare struct).
+func rpcResult(v map[string]any) map[string]any { return map[string]any{"result": v} }
+
 func TestRunLoginPersistsCredentials(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HULY_TOKEN", "")
@@ -28,12 +32,12 @@ func TestRunLoginPersistsCredentials(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		switch req.Method {
 		case "login":
-			_ = json.NewEncoder(w).Encode(map[string]any{"account": "acc-1", "token": "tok-acct"})
+			_ = json.NewEncoder(w).Encode(rpcResult(map[string]any{"account": "acc-1", "token": "tok-acct"}))
 		case "selectWorkspace":
-			_ = json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(rpcResult(map[string]any{
 				"endpoint": "wss://t.example", "token": "tok-ws",
 				"workspace": "ws-uuid", "account": "acc-1",
-			})
+			}))
 		}
 	}))
 	defer srv.Close()
@@ -68,17 +72,17 @@ func TestRunLoginOTPPersistsCredentials(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		switch req.Method {
 		case "loginOtp":
-			_ = json.NewEncoder(w).Encode(map[string]any{"sent": true})
+			_ = json.NewEncoder(w).Encode(rpcResult(map[string]any{"sent": true}))
 		case "validateOtp":
 			if req.Params["code"] != "654321" {
 				t.Errorf("bad code %v", req.Params["code"])
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"account": "acc-1", "token": "tok-acct"})
+			_ = json.NewEncoder(w).Encode(rpcResult(map[string]any{"account": "acc-1", "token": "tok-acct"}))
 		case "selectWorkspace":
-			_ = json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(rpcResult(map[string]any{
 				"endpoint": "wss://t.example", "token": "tok-ws",
 				"workspace": "ws-uuid", "account": "acc-1",
-			})
+			}))
 		}
 	}))
 	defer srv.Close()

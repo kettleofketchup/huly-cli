@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -44,6 +45,15 @@ func NewAccountClient(accountsURL string) *AccountClient {
 	return &AccountClient{url: strings.TrimRight(accountsURL, "/"), client: http.DefaultClient}
 }
 
+// accountError is the account service's error payload. The service returns
+// failures as an {"error":...} envelope — usually at HTTP 200, sometimes 404
+// (unknown method) — so the status code alone cannot be trusted.
+type accountError struct {
+	Severity string         `json:"severity"`
+	Code     string         `json:"code"`
+	Params   map[string]any `json:"params"`
+}
+
 func (c *AccountClient) rpc(ctx context.Context, token, method string, params map[string]any, out any) error {
 	body, _ := json.Marshal(map[string]any{"method": method, "params": params})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(body))
@@ -62,10 +72,38 @@ func (c *AccountClient) rpc(ctx context.Context, token, method string, params ma
 	if resp.StatusCode == http.StatusUnauthorized {
 		return ErrUnauthorized
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("account rpc %s: status %d", method, resp.StatusCode)
+
+	// The account service wraps responses in a JSON-RPC envelope:
+	//   success -> {"result": <data>}
+	//   failure -> {"error": {"code": "platform:status:...", ...}}  (often HTTP 200)
+	// Decode the envelope, not the bare struct, or every field silently
+	// stays zero and server errors are swallowed.
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("account rpc %s: read body: %w", method, err)
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	var env struct {
+		Result json.RawMessage `json:"result"`
+		Error  *accountError   `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return fmt.Errorf("account rpc %s: decode envelope (status %d): %w", method, resp.StatusCode, err)
+	}
+	if env.Error != nil {
+		if strings.Contains(env.Error.Code, "Unauthorized") {
+			return ErrUnauthorized
+		}
+		return fmt.Errorf("account rpc %s: %s", method, env.Error.Code)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("account rpc %s: status %d: %s", method, resp.StatusCode, string(raw))
+	}
+	if out != nil && len(env.Result) > 0 {
+		if err := json.Unmarshal(env.Result, out); err != nil {
+			return fmt.Errorf("account rpc %s: decode result: %w", method, err)
+		}
+	}
+	return nil
 }
 
 func (c *AccountClient) Login(ctx context.Context, email, password string) (LoginInfo, error) {
