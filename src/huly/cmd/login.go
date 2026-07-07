@@ -85,7 +85,7 @@ func otpInteractive() bool {
 // --workspace, so a one-off override run doesn't silently persist and
 // overwrite the saved config.
 func otpSaveDefault(cmd *cobra.Command) bool {
-	return !(cmd.Flags().Changed("url") || cmd.Flags().Changed("email") || cmd.Flags().Changed("workspace"))
+	return !cmd.Flags().Changed("url") && !cmd.Flags().Changed("email") && !cmd.Flags().Changed("workspace")
 }
 
 // runLoginOTPInteractive resolves inputs (TUI when on a terminal, plain
