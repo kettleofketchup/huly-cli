@@ -128,7 +128,7 @@ type otpInputs struct {
    (`server.url` / `login.email` / `login.workspace`).
 2. Decide interactive vs. not:
    - Interactive iff stdin **and** stderr are TTYs (`term.IsTerminal`)
-     and `--no-tui` was not passed.
+     and `--no-interactive` was not passed.
    - Non-interactive → keep the **current** behavior exactly: require
      url/email/workspace (from flags/config), call `runLoginOTP` with the
      existing `promptCode` stdin `codeFn`. This preserves scripting and
@@ -154,8 +154,8 @@ type otpInputs struct {
   (`collectOTPInputs(prefill) (otpInputs, error)` and `promptCodeTUI()
   (string, error)`) so `login.go` stays declarative and the form logic is
   isolated.
-- `--no-tui` bool flag added to `loginCmd` for forcing the plain path
-  even on a TTY.
+- `--no-interactive` bool flag added to `loginCmd` for forcing the plain
+  stdin path even on a TTY.
 
 ### 4. Dependency
 
@@ -168,7 +168,7 @@ Add `github.com/charmbracelet/huh` (pulls in bubbletea/lipgloss). Run
 huly login --otp
       │  resolve prefill: flags → config (server.url/login.email/login.workspace)
       ▼
- TTY & !--no-tui ? ──no──▶ require fields ─▶ runLoginOTP(..., promptCode[stdin])
+ TTY & !--no-interactive ? ─no─▶ require fields ─▶ runLoginOTP(..., promptCode[stdin])
       │yes
       ▼
  huh form 1 (URL, Email, Workspace, [x] Save)
