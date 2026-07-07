@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/kettleofketchup/huly-cli/src/huly/config"
 	"github.com/kettleofketchup/huly-cli/src/huly/internal/output"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (

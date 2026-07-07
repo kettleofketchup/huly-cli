@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	"github.com/invopop/jsonschema"
+	"github.com/kettleofketchup/huly-cli/src/huly/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
-"github.com/kettleofketchup/huly-cli/src/huly/config"
 )
 
 var configCmd = &cobra.Command{
