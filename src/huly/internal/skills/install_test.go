@@ -367,3 +367,74 @@ func mustRead(t *testing.T, p string) []byte {
 	}
 	return b
 }
+
+func TestUninstallOursRemoves(t *testing.T) {
+	sk, ag := seed(t), agentAt(t)
+	o := InstallOpts{CurrentVersion: "0.2.0"}
+	if _, err := Install(sk, ag, o); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(ag.SkillsDir, sk.Name)
+
+	r, err := Uninstall(sk, ag, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusRemoved {
+		t.Fatalf("uninstall status = %q, want removed", r.Status)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Error("dir still present after uninstall")
+	}
+}
+
+func TestUninstallForeignRefusedWithoutForce(t *testing.T) {
+	sk, ag := seed(t), agentAt(t)
+	dest := filepath.Join(ag.SkillsDir, sk.Name)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "SKILL.md"),
+		[]byte("---\nname: huly-issue-tracking\n---\nforeign\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Uninstall(sk, ag, InstallOpts{CurrentVersion: "0.2.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusConflict || r.Reason != "foreign" {
+		t.Fatalf("foreign uninstall = %q/%q, want conflict/foreign", r.Status, r.Reason)
+	}
+	if _, err := os.Stat(dest); err != nil {
+		t.Error("foreign dir removed without --force")
+	}
+	// With --force it is removed FROM dest, but backed up (not destroyed).
+	rf, err := Uninstall(sk, ag, InstallOpts{CurrentVersion: "0.2.0", Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rf.Status != StatusRemoved {
+		t.Errorf("forced foreign uninstall = %q, want removed", rf.Status)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Error("dest still present after forced uninstall")
+	}
+	baks, _ := filepath.Glob(dest + ".bak-*")
+	if len(baks) == 0 {
+		t.Fatal("forced foreign uninstall destroyed the dir without a backup")
+	}
+	if bakRaw, err := os.ReadFile(filepath.Join(baks[0], "SKILL.md")); err != nil || !strings.Contains(string(bakRaw), "foreign") {
+		t.Error("backup does not preserve the foreign content")
+	}
+}
+
+func TestUninstallAbsentSkipped(t *testing.T) {
+	sk, ag := seed(t), agentAt(t)
+	r, err := Uninstall(sk, ag, InstallOpts{CurrentVersion: "0.2.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusSkipped || r.Reason != "absent" {
+		t.Errorf("absent uninstall = %q/%q, want skipped/absent", r.Status, r.Reason)
+	}
+}

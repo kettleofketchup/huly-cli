@@ -168,3 +168,50 @@ func restampVersion(md string, raw []byte, version, hash string) error {
 	}
 	return os.WriteFile(md, out, 0o644)
 }
+
+// Uninstall removes a skill from an agent, but only one huly owns unless Force.
+// A foreign/unreadable dir removed under Force is backed up (never destroyed),
+// mirroring install --force and the "never destroy unproven content" rule.
+func Uninstall(sk Skill, ag Agent, o InstallOpts) (Result, error) {
+	dest := filepath.Join(ag.SkillsDir, sk.Name)
+	res := Result{Skill: sk.Name, Agent: ag.ID, Path: dest}
+
+	if _, statErr := os.Stat(dest); os.IsNotExist(statErr) {
+		res.Status, res.Reason = StatusSkipped, "absent"
+		return res, nil
+	}
+
+	ours := false
+	reason := "unreadable" // no/unparseable SKILL.md
+	if raw, err := os.ReadFile(filepath.Join(dest, "SKILL.md")); err == nil {
+		if fm, perr := Parse(raw); perr == nil {
+			if fm.ManagedBy == "huly-cli" {
+				ours = true
+			} else {
+				reason = "foreign"
+			}
+		}
+	}
+	if !ours && !o.Force {
+		res.Status, res.Reason = StatusConflict, reason
+		return res, nil
+	}
+	if !o.DryRun {
+		if ours {
+			if err := os.RemoveAll(dest); err != nil {
+				return res, err
+			}
+		} else {
+			// Force-removing a dir we cannot prove is ours: back it up rather
+			// than destroy it.
+			if err := backup(dest); err != nil {
+				return res, err
+			}
+		}
+	}
+	res.Status = StatusRemoved
+	if !ours {
+		res.Reason = reason
+	}
+	return res, nil
+}
