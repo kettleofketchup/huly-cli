@@ -16,25 +16,25 @@ import (
 )
 
 var (
-	loginURL       string
-	loginEmail     string
-	loginWorkspace string
-	loginOTP       bool
+	loginURL           string
+	loginEmail         string
+	loginWorkspace     string
+	loginOTP           bool
+	loginNoInteractive bool
 )
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Log in to a Huly workspace (password, or --otp for external/SSO accounts)",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if loginOTP {
+			return runLoginOTPInteractive(cmd.Context())
+		}
 		if loginURL == "" {
-			loginURL = viper.GetString("server.url") // set by config (Task 13); empty until then
+			loginURL = viper.GetString("server.url")
 		}
 		if loginURL == "" || loginEmail == "" || loginWorkspace == "" {
 			return fmt.Errorf("--url, --email and --workspace are required")
-		}
-		if loginOTP {
-			// Password-free path for external-login (OAuth/SSO) accounts.
-			return runLoginOTP(cmd.Context(), loginURL, loginEmail, loginWorkspace, promptCode)
 		}
 		fmt.Fprint(os.Stderr, "Password: ")
 		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
@@ -44,6 +44,64 @@ var loginCmd = &cobra.Command{
 		}
 		return runLogin(cmd.Context(), loginURL, loginEmail, string(pw), loginWorkspace)
 	},
+}
+
+// otpPrefill resolves each field to its flag value, else the config value.
+func otpPrefill(flagURL, flagEmail, flagWS string) otpInputs {
+	pick := func(flag, key string) string {
+		if flag != "" {
+			return flag
+		}
+		return viper.GetString(key)
+	}
+	return otpInputs{
+		URL:       pick(flagURL, "server.url"),
+		Email:     pick(flagEmail, "login.email"),
+		Workspace: pick(flagWS, "login.workspace"),
+	}
+}
+
+// saveOTPInputs persists URL/email/workspace to the config file for autofill.
+func saveOTPInputs(in otpInputs) error {
+	return writeConfigValues(resolveConfigPath(), map[string]string{
+		"server.url":      in.URL,
+		"login.email":     in.Email,
+		"login.workspace": in.Workspace,
+	})
+}
+
+// otpInteractive reports whether we should show the TUI: a real terminal on
+// both stdin and stderr, and --no-interactive was not passed.
+func otpInteractive() bool {
+	if loginNoInteractive {
+		return false
+	}
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd()))
+}
+
+// runLoginOTPInteractive resolves inputs (TUI when on a terminal, plain
+// stdin otherwise) and runs the OTP login.
+func runLoginOTPInteractive(ctx context.Context) error {
+	prefill := otpPrefill(loginURL, loginEmail, loginWorkspace)
+
+	if !otpInteractive() {
+		// Non-interactive: require resolved fields, use the stdin code prompt.
+		if prefill.URL == "" || prefill.Email == "" || prefill.Workspace == "" {
+			return fmt.Errorf("--url, --email and --workspace are required")
+		}
+		return runLoginOTP(ctx, prefill.URL, prefill.Email, prefill.Workspace, promptCode)
+	}
+
+	in, err := collectOTPInputs(prefill)
+	if err != nil {
+		return err
+	}
+	if in.Save {
+		if err := saveOTPInputs(in); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not save config: %v\n", err)
+		}
+	}
+	return runLoginOTP(ctx, in.URL, in.Email, in.Workspace, promptCodeTUI)
 }
 
 // promptCode reads a one-time code from stdin (prompt on stderr).
@@ -147,5 +205,6 @@ func init() {
 	loginCmd.Flags().StringVar(&loginEmail, "email", "", "account email")
 	loginCmd.Flags().StringVar(&loginWorkspace, "workspace", "", "workspace url/name")
 	loginCmd.Flags().BoolVar(&loginOTP, "otp", false, "log in with an emailed one-time code (for external/SSO accounts with no password)")
+	loginCmd.Flags().BoolVar(&loginNoInteractive, "no-interactive", false, "skip the form; use plain stdin prompts (for scripts/CI)")
 	rootCmd.AddCommand(loginCmd, logoutCmd, whoamiCmd)
 }
