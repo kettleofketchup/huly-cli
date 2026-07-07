@@ -12,8 +12,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/kettleofketchup/huly-cli/src/huly/version"
 	"github.com/spf13/cobra"
-"github.com/kettleofketchup/huly-cli/src/huly/version"
 )
 
 // GitHubRelease represents the structure of a GitHub release API response
@@ -203,7 +203,6 @@ func getGitLabRelease(repoPath string) (*ReleaseInfo, error) {
 	// Try GitLab.com first, then fall back to self-hosted
 	hosts := []string{
 		"https://gitlab.com",
-
 	}
 
 	var lastErr error

@@ -14,6 +14,7 @@ import (
 type Config struct {
 	Log      LogConfig      `yaml:"log"      json:"log"      jsonschema:"title=Logging Configuration,description=Configure log output"`
 	Server   ServerConfig   `yaml:"server"   json:"server"   mapstructure:"server"`
+	Login    LoginConfig    `yaml:"login"    json:"login"    mapstructure:"login"`
 	Defaults DefaultsConfig `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
 	Output   string         `yaml:"output"   json:"output"   mapstructure:"output" jsonschema:"enum=table,enum=json,default=table"`
 }
@@ -21,6 +22,12 @@ type Config struct {
 // ServerConfig holds server connection settings.
 type ServerConfig struct {
 	URL string `yaml:"url" json:"url" mapstructure:"url" jsonschema:"description=Default Huly base URL for login"`
+}
+
+// LoginConfig holds default values used to autofill the login form.
+type LoginConfig struct {
+	Email     string `yaml:"email"     json:"email"     mapstructure:"email"     jsonschema:"description=Default account email for login"`
+	Workspace string `yaml:"workspace" json:"workspace" mapstructure:"workspace" jsonschema:"description=Default workspace url/name for login"`
 }
 
 // DefaultsConfig holds default values for command flags.

@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/kettleofketchup/huly-cli/src/huly/version"
 	"github.com/spf13/cobra"
-"github.com/kettleofketchup/huly-cli/src/huly/version"
 )
 
 var versionCmd = &cobra.Command{

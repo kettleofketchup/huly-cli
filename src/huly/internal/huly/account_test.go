@@ -3,10 +3,14 @@ package huly
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+// result wraps a value in the account service's JSON-RPC success envelope.
+func result(v any) map[string]any { return map[string]any{"result": v} }
 
 func TestRewriteScheme(t *testing.T) {
 	cases := map[string]string{
@@ -34,12 +38,12 @@ func TestLoginAndSelectWorkspace(t *testing.T) {
 			if req.Params["email"] != "a@b.c" {
 				t.Errorf("bad email %v", req.Params["email"])
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"account": "acc-1", "token": "tok-acct"})
+			_ = json.NewEncoder(w).Encode(result(map[string]any{"account": "acc-1", "token": "tok-acct"}))
 		case "selectWorkspace":
-			_ = json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(result(map[string]any{
 				"endpoint": "wss://transactor.example", "token": "tok-ws",
 				"workspace": "ws-uuid", "workspaceUrl": "myws", "account": "acc-1",
-			})
+			}))
 		default:
 			t.Errorf("unexpected method %q", req.Method)
 		}
@@ -76,12 +80,12 @@ func TestLoginOtpAndValidateOtp(t *testing.T) {
 			if req.Params["email"] != "a@b.c" {
 				t.Errorf("bad email %v", req.Params["email"])
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"sent": true, "retryOn": 1700000000000})
+			_ = json.NewEncoder(w).Encode(result(map[string]any{"sent": true, "retryOn": 1700000000000}))
 		case "validateOtp":
 			if req.Params["code"] != "123456" {
 				t.Errorf("bad code %v", req.Params["code"])
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"account": "acc-1", "token": "tok-otp"})
+			_ = json.NewEncoder(w).Encode(result(map[string]any{"account": "acc-1", "token": "tok-otp"}))
 		default:
 			t.Errorf("unexpected method %q", req.Method)
 		}
@@ -96,5 +100,44 @@ func TestLoginOtpAndValidateOtp(t *testing.T) {
 	li, err := ac.ValidateOtp(context.Background(), "a@b.c", "123456")
 	if err != nil || li.Token != "tok-otp" || li.Account != "acc-1" {
 		t.Fatalf("validateOtp = %+v, err=%v", li, err)
+	}
+}
+
+// The account service returns failures as HTTP 200 with an {"error":...}
+// envelope. rpc must surface these as errors, not silently yield a zero value.
+func TestAccountErrorEnvelopeSurfaces(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Note: status 200 even though this is an error.
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{"code": "platform:status:Unauthorized", "params": map[string]any{}},
+		})
+	}))
+	defer srv.Close()
+
+	ac := NewAccountClient(srv.URL)
+	ws, err := ac.SelectWorkspace(context.Background(), "", "myws")
+	if err == nil {
+		t.Fatalf("expected error from error-envelope, got ws=%+v", ws)
+	}
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected ErrUnauthorized, got %v", err)
+	}
+}
+
+// A non-Unauthorized error code must also surface (not be swallowed).
+func TestAccountErrorEnvelopeGenericSurfaces(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{"code": "platform:status:BadRequest", "params": map[string]any{}},
+		})
+	}))
+	defer srv.Close()
+
+	ac := NewAccountClient(srv.URL)
+	_, err := ac.ValidateOtp(context.Background(), "a@b.c", "wrong")
+	if err == nil {
+		t.Fatal("expected error from BadRequest envelope, got nil")
 	}
 }
