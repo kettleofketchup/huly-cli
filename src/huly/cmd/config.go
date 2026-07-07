@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -95,7 +96,9 @@ func writeConfigValues(path string, kv map[string]string) error {
 	}
 	v := viper.New()
 	v.SetConfigFile(path)
-	_ = v.ReadInConfig() // tolerate missing file
+	if err := v.ReadInConfig(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read existing config %s: %w", path, err)
+	}
 	for k, val := range kv {
 		v.Set(k, val)
 	}

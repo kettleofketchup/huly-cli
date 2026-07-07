@@ -44,6 +44,22 @@ func TestWriteConfigValuesPreservesExisting(t *testing.T) {
 	}
 }
 
+func TestWriteConfigValuesRefusesToClobberMalformed(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "huly.yaml")
+	bad := []byte("server:\n  url: \"unterminated\n\tbroken: [1,2\n")
+	if err := os.WriteFile(path, bad, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeConfigValues(path, map[string]string{"login.email": "x@y.com"}); err == nil {
+		t.Fatal("expected error writing over malformed config, got nil")
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != string(bad) {
+		t.Fatalf("malformed file was overwritten; file=%q", got)
+	}
+}
+
 func TestConfigSetRejectsUnknownKey(t *testing.T) {
 	if validConfigKeys["not.a.key"] {
 		t.Fatal("unknown key unexpectedly allowed")
