@@ -261,15 +261,28 @@ func getBinaryName() string {
 	return name
 }
 
+// stagingPath returns a temp path in the SAME directory as target. The install
+// does download-then-rename, and os.Rename cannot move across filesystems
+// (e.g. /tmp on tmpfs -> ~/.local on disk fails with EXDEV / "invalid
+// cross-device link"), so the staged file must live beside the target.
+func stagingPath(target string) string {
+	return filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".update")
+}
+
 func downloadAndInstall(downloadURL string) error {
 	// Get current executable path
 	currentExe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
+	// Resolve symlinks so we replace the real file (not a symlink) and stage the
+	// download on the same filesystem as it.
+	if resolved, rerr := filepath.EvalSymlinks(currentExe); rerr == nil {
+		currentExe = resolved
+	}
 
-	// Create temp file
-	tmpFile := filepath.Join(os.TempDir(), "huly-update")
+	// Stage the download beside the target so the final rename stays on one FS.
+	tmpFile := stagingPath(currentExe)
 
 	fmt.Printf("Downloading from %s...\n", downloadURL)
 
