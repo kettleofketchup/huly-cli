@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/kettleofketchup/huly-cli/src/huly/internal/semver"
 	"github.com/kettleofketchup/huly-cli/src/huly/version"
 	"github.com/spf13/cobra"
 )
@@ -84,7 +85,7 @@ func runUpdate() error {
 	fmt.Printf("Latest version:  v%s\n", latestVersion)
 
 	// Compare versions
-	if compareVersions(currentVersion, latestVersion) >= 0 {
+	if semver.Compare(currentVersion, latestVersion) >= 0 {
 		fmt.Println("You are already running the latest version!")
 		return nil
 	}
@@ -356,56 +357,4 @@ del "%%~f0"
 
 	fmt.Println("Update script started. Binary will be replaced after exit.")
 	return nil
-}
-
-// compareVersions compares two semantic version strings
-// Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
-func compareVersions(v1, v2 string) int {
-	// Handle dev versions
-	if v1 == "dev" && v2 != "dev" {
-		return -1
-	}
-	if v1 != "dev" && v2 == "dev" {
-		return 1
-	}
-	if v1 == "dev" && v2 == "dev" {
-		return 0
-	}
-
-	parts1 := parseVersion(v1)
-	parts2 := parseVersion(v2)
-
-	for i := 0; i < 3; i++ {
-		if parts1[i] < parts2[i] {
-			return -1
-		}
-		if parts1[i] > parts2[i] {
-			return 1
-		}
-	}
-
-	return 0
-}
-
-// parseVersion parses a version string into [major, minor, patch]
-func parseVersion(ver string) [3]int {
-	parts := [3]int{0, 0, 0}
-	versionParts := strings.Split(ver, ".")
-
-	for i, part := range versionParts {
-		if i >= 3 {
-			break
-		}
-		val := 0
-		for _, char := range part {
-			if char >= '0' && char <= '9' {
-				val = val*10 + int(char-'0')
-			} else {
-				break
-			}
-		}
-		parts[i] = val
-	}
-
-	return parts
 }
