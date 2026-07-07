@@ -1,11 +1,41 @@
-# huly-cli SDD progress ledger — login-otp-tui feature
+# huly-cli SDD progress ledger
 
-Plan: docs/superpowers/plans/2026-07-07-login-otp-tui.md
-Branch: feature/login-otp-tui (worktree .worktrees/login-otp-tui)
-Base commit: 522d4d7 (includes account-envelope bug fix)
+Plan: docs/superpowers/plans/2026-06-25-huly-cli.md
+Branch: master  | GitHub repo: public, created+pushed at end (Task 2 last)
 
-Task 1: complete (commit 89ede05, review clean, no issues)
-Task 2: complete (commits 0ab0beb+b3e4a23, review clean after fix; IMPORTANT fixed: no longer clobbers malformed config on read error. MINOR deferred: config.go:15 import indentation [Task 5 lint], resolveConfigPath/configPathCmd DRY)
-Task 3: complete (commit 54888ad, review clean; huh v1.0.0; ADAPTED: Form.WithTitle absent in huh v1 -> Group.Title, verified equivalent. MINOR deferred: required() generic name may collide later)
-Task 4: complete (commit 0d1d968, review clean, no issues; full suite green)
-Task 5: complete (lint clean: `just lint` fmt+golangci-lint 0 issues, fixed pre-existing gofmt import-order drift in config.go/root.go/update.go/version.go; docs/auth.md updated with config set, OTP autofill/save toggle, --no-interactive; full suite green)
+Task 1: complete (scaffold commit 861603f, builds+vets clean, inherited cmds present)
+Task 3: complete (commit 847f6f0, review clean; MINOR: ids.go cap hint 28→16, defer to final)
+Task 4: complete (commit cfc7ada, review clean; MINOR: Issue.Priority int, String() untested — defer)
+Task 5: complete (commit dd1dfbf, review clean; MINOR: map mutation in NewCreateIssueTx, NewUpdateDocTx no nil-guard on ops, test == "" type-assert — defer)
+Task 6: complete (commit 7364910, verified inline: exact errors.go, builds)
+Task 7: complete (commits b1af69d+daad34a, review clean after fix; IMPORTANT fixed: request-construction error handling; MINOR: LoadServerConfig untested, bearer/kind untested — defer)
+Task 8: complete (commits 4b6f310+e583c55, review clean after fix; IMPORTANT fixed: 201/204 success; MINOR: json.Marshal err ignored, Retry-After date form, test gaps — defer). Phase 2 (client) done.
+Task 9: complete (commit b7b3c34, review clean; MINOR: cred-file TOCTOU umask window before chmod [security, consider hardening], os.IsNotExist vs errors.Is, test discards Save err — defer to final)
+Task 10: complete (commit 0bebe6f, review clean; MINOR: whoami dup newClient, bare err wrap in runLogin — defer)
+Task 11: complete (commit ee24d21, verified inline: exact auth.go, builds+vets+tests). Phase 3 (auth) done.
+Task 12: complete (commit 109fa55, verified inline: exact output.go, tests+vet pass)
+Task 13: complete (commit 135356f, review clean; MINOR: Log field no mapstructure tag, rootCmd PersistentPreRunE skipped if subcmd defines own [none do] — defer). Phase 4 done.
+Task 14: complete (commit 87e2423, review clean; MINOR: tmp leak on rename failure, os.IsNotExist — defer)
+Task 15: complete (commit 0659796, verified inline: filterPrefix safe, tests+vet pass). Phase 5 done.
+Task 16: complete (commit 450c1f1, review clean; MINOR: cache.Load err discarded, prune branch untested — defer)
+Task 17: complete (commit 1351aa2, verified inline: exact project.go, tests+vet pass, completion resolves cleanly)
+Task 18: complete (commits b04f09b+b6ecd48; IMPORTANT fixed: component cache write-through now stores human project identifier, consistent with sync)
+Task 19: complete (commit 6de3b34, verified inline: createMilestone correct, identifier write-through, target-date parse, --output, tests+vet pass)
+Task 20: complete (commit ca78b29, review clean; MINOR: issue write-through omits Project [if fixed, store pr.Identifier NOT projectRef to match components/sync], test doesn't assert attachedToClass — defer to final). Phase 6 done.
+Task 21: complete (commit 421447a, review clean; MINOR: projectFilter branch untested, non-deterministic sync slice order — defer). All code tasks (3-21) done.
+Task 22: complete (commit 7c5f9bd, README accurate; verified: full suite+vet pass, completion smoke clean exit 0, --help lists 13 commands)
+Task 23: complete (commit 1f831ca, Zensical build OK, public/ gitignored, Go green; NOTE: docs/superpowers specs render into site - minor, exclude later). Phase 7 done. All code+docs tasks complete.
+Final review: READY TO MERGE (opus, no blockers, all minors triaged acceptable). Post-review fixes (commit 4f732c6): (1) release.just VERSION_PKG gitlab.lan->github [version stamping now works, verified huly 1.2.3], (2) auth set-token now captures Account via GetAccount [app-token txes get valid modifiedBy]. Self-update asset naming huly_<os>_<arch> verified consistent between getBinaryName and release.just.
+PUSHED: public repo github.com/kettleofketchup/huly-cli, master (56 commits, noreply authorship verified, no email leak).
+CI: Pages/docs = SUCCESS after enabling GitHub Pages (build_type=workflow); site https://kettleofketchup.github.io/huly-cli/. Dependency Graph = success. ci.yml (Go build/test/docker) NOT triggered — template fires it only on pull_request + push tags v*, not master pushes. Not yet exercised; local suite is green.
+DOCS: zensical.toml aligned to canonical copier-docs template (full extension set + theme + extra.css + icons). Root cause of earlier broken render: hand-written Task 23 config declared only highlight+toc, opting out of zensical auto-defaults. copier-docs upstream already correct - no upstream change needed.
+FEATURE: huly login --otp (email OTP for external/SSO accounts, commit deb6b9e). Added LoginOtp/ValidateOtp to account client + --otp path on login; tests pass; docs updated. Reason: user's Huly account uses external login (no password), so email+password login was impossible.
+
+RELEASE v0.1.0 — GREEN. Running 'just git::version minor' exposed a fully-broken release pipeline; fixed in sequence:
+  1. test job: 'go: no such tool covdata' — go.mod requires go1.25 (via x/sys,x/term,flock) but CI pinned 1.23, forcing a toolchain download that broke -cover. Fixed: setup-go go-version-file: src/huly/go.mod in all jobs.
+  2. lint job: golangci-lint ran at repo root (module is src/huly) AND action@v6 rejects golangci-lint v2. Fixed: action@v7 + working-directory: src/huly + version v2.11.4. Also fixed 10 real errcheck findings in code.
+  3. MISSING release job: build only uploaded a workflow artifact, no GitHub Release assets. Added release job (just release::all + softprops/action-gh-release@v2) publishing huly_<os>_<arch>.
+  4. docker job: 'go mod download' failed on golang:1.23 base (module needs 1.25). Fixed: Dockerfile base -> golang:1.25-bookworm.
+Final: all 5 jobs (lint/test/build/release/docker) green. Release v0.1.0 has 5 platform assets; ghcr image tagged v0.1.0+latest. Self-update functional.
+Also: 'just git::version major|minor|hotfix [-y]' hardened (clean-tree/sync/test guards, -y/YES=1/SKIP_TESTS=1).
+FIX: huly update failed with 'invalid cross-device link' — update.go downloaded to /tmp then os.Rename onto ~/.local binary (EXDEV across filesystems). Fixed: stage download beside symlink-resolved target (stagingPath). Verified end-to-end (v0.1.0->v0.1.1 replace succeeded). Shipped v0.1.2; installed for user (v0.1.1 had buggy updater so needed one manual install). Same bug exists in upstream go-template update.go.jinja.
