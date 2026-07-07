@@ -38,3 +38,4 @@ RELEASE v0.1.0 — GREEN. Running 'just git::version minor' exposed a fully-brok
   4. docker job: 'go mod download' failed on golang:1.23 base (module needs 1.25). Fixed: Dockerfile base -> golang:1.25-bookworm.
 Final: all 5 jobs (lint/test/build/release/docker) green. Release v0.1.0 has 5 platform assets; ghcr image tagged v0.1.0+latest. Self-update functional.
 Also: 'just git::version major|minor|hotfix [-y]' hardened (clean-tree/sync/test guards, -y/YES=1/SKIP_TESTS=1).
+FIX: huly update failed with 'invalid cross-device link' — update.go downloaded to /tmp then os.Rename onto ~/.local binary (EXDEV across filesystems). Fixed: stage download beside symlink-resolved target (stagingPath). Verified end-to-end (v0.1.0->v0.1.1 replace succeeded). Shipped v0.1.2; installed for user (v0.1.1 had buggy updater so needed one manual install). Same bug exists in upstream go-template update.go.jinja.
