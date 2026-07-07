@@ -30,8 +30,10 @@ In scope:
      `list`.
 5. Non-interactive flags (`--agents`, `--all`, `--yes`) with automatic
    fallback when stdout/stdin isn't a TTY.
-6. A per-install marker (`.huly-skill.json`) so `update` is idempotent and
-   won't clobber user-edited skills without `--force`.
+6. Stamp the huly-cli version into each installed skill's `SKILL.md`
+   frontmatter (`metadata.huly_cli_version` + `metadata.managed_by`) so
+   `update` upgrades only huly-owned skills that are behind the running
+   binary, and never clobbers foreign skills without `--force`.
 
 Out of scope: authoring more than the one seed skill (the catalog is
 designed to grow — dropping a dir in `assets/` ships it next build);
@@ -142,44 +144,66 @@ func DetectAgents() []Agent // resolves ~ via os.UserHomeDir / UserConfigDir
   subdir, which we create on install). All five are always returned; the
   UI shows present ones selectable and absent ones greyed/​skippable.
 
-### 3. Install / update / marker (`install.go`)
+### 3. Install / update — version stamped in frontmatter (`install.go`)
 
-**Marker file** written at `<skillsDir>/<name>/.huly-skill.json`:
+Ownership and version live **in the installed `SKILL.md` frontmatter**,
+under the recognized free-form `metadata` map — no sidecar file. The
+embedded (authored) skill carries a `managed_by` marker; the **version is
+stamped at install time** from `version.Version`, so authoring a skill
+never requires hand-bumping a version:
 
-```json
-{ "skill": "huly-issue-tracking", "huly_version": "0.1.3",
-  "content_hash": "sha256:…", "installed_at": "2026-07-07T18:04:05Z" }
+```yaml
+---
+name: huly-issue-tracking
+description: Track bugs and issues in a huly project ...
+metadata:
+  managed_by: huly-cli
+  huly_cli_version: 0.1.3      # written/rewritten by huly on install/update
+---
 ```
 
-`content_hash` is a stable hash over the embedded skill's file tree
-(sorted relative paths + contents). It is what huly *wrote*, used to tell
-huly-managed installs from user-edited ones. The hash **excludes**
-`.huly-skill.json` itself, so the same function computes both the embedded
-hash (no marker present) and the on-disk hash (marker skipped) and they
-compare directly.
+`metadata` is a standard optional frontmatter field, so all five agents
+parse it without complaint; other tools simply ignore these keys.
 
 ```go
 func Install(sk Skill, agent Agent, opts InstallOpts) (InstallResult, error)
 ```
 
-Algorithm for one (skill, agent):
+Algorithm for one (skill, agent), where `dest = <agent.SkillsDir>/<sk.Name>`
+and `cur = version.Version`:
 
-1. `dest = <agent.SkillsDir>/<sk.Name>`; compute embedded `hash`.
-2. If `dest` absent → copy tree, write marker → `Installed`.
-3. If `dest` present with a valid marker:
-   - marker hash == embedded hash → `UpToDate` (skip).
-   - marker hash != embedded hash but on-disk tree still matches the
-     marker hash (huly-managed, just an older version) → replace tree,
-     rewrite marker → `Updated`.
-   - on-disk tree hash != marker hash → user-modified: skip with
-     `Conflict` unless `opts.Force`, then replace.
-4. If `dest` present with **no** marker (installed by another tool / hand)
-   → `Conflict`, skip unless `--force`.
+1. `dest` absent → copy the embedded tree, stamp
+   `metadata.huly_cli_version = cur` into the written `SKILL.md` →
+   `Installed`.
+2. `dest` present → read its `SKILL.md` frontmatter:
+   - **Not ours** (`metadata.managed_by != "huly-cli"`, or no frontmatter
+     metadata) → `Conflict`; skip unless `--force`. huly never overwrites
+     a skill it didn't author.
+   - **Ours**, `huly_cli_version >= cur` (same or newer) → `UpToDate`, skip.
+   - **Ours**, `huly_cli_version < cur` (installed by an older huly) →
+     replace the tree, re-stamp `huly_cli_version = cur` → `Updated`.
+
+Version compare reuses the existing `compareVersions` semver logic from
+`cmd/update.go` (lift it into a shared helper). "Ours and behind the
+running binary → upgrade" is the whole rule; a missing/garbage version on
+one of our skills is treated as "behind" and upgraded.
+
+`install` (as opposed to `update`) forces a fresh copy for the named
+skills even when `UpToDate`, so a user can always (re)assert the shipped
+version onto a target (subject to the not-ours guard). `update` only
+touches skills already present and ours.
 
 Copy is write-to-temp-dir-then-rename within the same `skills/` parent to
 stay atomic-ish and on one filesystem (same lesson as `update.go`).
-`uninstall` removes `<dest>` only if it carries a huly marker (never
+`uninstall` removes `<dest>` only if its frontmatter is ours (never
 deletes foreign skills) unless `--force`.
+
+*Note on user edits:* because ownership+version live in frontmatter, a
+user who edits the body of one of our skills will have those edits
+replaced on the next version-driven upgrade. That is the intended
+version-based model. (If edit-preservation is later wanted, add a
+`metadata.content_hash` and skip upgrade when the on-disk body hash
+diverges from it — deliberately deferred, not in this scope.)
 
 ### 4. Command surface (`cmd/skills.go`)
 
@@ -255,14 +279,15 @@ huly skills install
       │                                  │  (or --agents/--all/--yes)
       ▼                                  ▼
   for each (skill, agent):  Install(skill, agent, opts)
-      │   embed tree ─hash→ compare marker ─▶ copy/skip/conflict
+      │   read dest SKILL.md frontmatter (managed_by, huly_cli_version)
+      │   ours & version<cur → replace ;  not ours → conflict ; else skip
       ▼
-  write <skillsDir>/<name>/ + .huly-skill.json
+  write <skillsDir>/<name>/ (SKILL.md stamped huly_cli_version = cur)
       ▼
   per-target result summary
 
-Refresh path:  huly update (new binary w/ newer embedded skills)
-               → huly skills update  (marker hash differs → replace)
+Refresh path:  huly update (new binary, higher version.Version)
+               → huly skills update  (installed version < binary → replace)
 ```
 
 ## Error Handling
@@ -272,8 +297,9 @@ Refresh path:  huly update (new binary w/ newer embedded skills)
 - Non-interactive without `--agents`/`--all`: error listing detected
   agents.
 - Unknown skill name arg: error listing catalog names.
-- Conflict (foreign or user-edited skill dir): skip that target, report
-  `! conflict`, suggest `--force`; never overwrite silently.
+- Conflict (skill dir whose frontmatter isn't `managed_by: huly-cli`):
+  skip that target, report `! conflict`, suggest `--force`; never
+  overwrite a foreign skill silently.
 - Copy/rename/permission failure: wrapped `%w`, that target fails but
   others still proceed; command exits non-zero if any target errored.
 - Embedded catalog empty/corrupt: caught by the integrity test at build/CI
@@ -287,11 +313,17 @@ Refresh path:  huly update (new binary w/ newer embedded skills)
 - **Detection:** point `HOME`/`XDG_CONFIG_HOME` at a `t.TempDir()`, create
   subsets of agent dirs, assert `DetectAgents()` `Present` flags and
   resolved `SkillsDir` paths.
-- **Install/update/marker:** into `t.TempDir()` skills dirs —
-  fresh install writes tree + marker; second install → `UpToDate`;
-  bump embedded hash → `Updated`; hand-edit a file → `Conflict` without
-  `--force`, replaced with `--force`; foreign dir (no marker) → `Conflict`.
-- **Uninstall:** removes managed dir; refuses foreign dir without
+- **Install/update/version:** into `t.TempDir()` skills dirs — fresh
+  install writes the tree and stamps `metadata.huly_cli_version`; a skill
+  stamped `>=` binary version → `UpToDate` (under `update`); stamped with
+  an older version → `Updated` and re-stamped; a dir whose frontmatter
+  lacks `managed_by: huly-cli` → `Conflict` without `--force`, replaced
+  with `--force`; missing/garbage version on one of ours → treated as
+  behind, upgraded.
+- **Frontmatter stamping:** round-trip a SKILL.md through the
+  stamp/read helpers; assert `managed_by`/`huly_cli_version` land under
+  `metadata` and `name`/`description` survive unchanged.
+- **Uninstall:** removes an ours dir; refuses a foreign dir without
   `--force`.
 - **Non-interactive flag paths:** `--agents`, `--all`, `--yes` resolve the
   right target set without a TTY; `--output json` for `list`.
@@ -300,9 +332,8 @@ Refresh path:  huly update (new binary w/ newer embedded skills)
 
 ## YAGNI / cut lines
 
+All five agents are in scope (Claude Code, Codex, opencode, Cursor, Pi).
 If scope needs trimming, in order: drop the full `huly skills` dashboard
 and keep only `install`/`list`/`update` + the agent picker (the dashboard
-is the most UI for the least logic); drop `uninstall` (users can `rm`);
-drop Cursor/Pi from the detection table (keep Claude/Codex/opencode, the
-three the user named). The embed + install engine + one seed skill is the
-irreducible core.
+is the most UI for the least logic); drop `uninstall` (users can `rm`).
+The embed + install engine + one seed skill is the irreducible core.
