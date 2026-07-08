@@ -23,6 +23,22 @@ huly skills uninstall --all      # remove huly-owned skills
 
 `huly skills list` shows every detected agent with no selector.
 
+## Interactive mode
+
+At a terminal, `huly skills` with no subcommand opens an interactive dashboard
+(pick skills → pick agents → pick an action). `huly skills tui` forces the
+dashboard and errors if you're not on a terminal.
+
+`install`/`update`/`uninstall` with no `--agents`/`--all` at a terminal open a
+pre-checked agent picker, then a confirmation. Add `--yes` to skip the
+confirmation, or `--no-interactive` to force the non-interactive behavior
+(which then requires `--all` or `--agents`). In a pipe or script (no TTY) the
+commands are always non-interactive and require an explicit selector.
+
+The dashboard always confirms before applying and does not accept
+`--force`/`--dry-run`/`--fail-on-conflict`; for those, use the explicit
+commands (e.g. `huly skills install --force`).
+
 ## Flags
 
 | Flag | Meaning |
@@ -33,6 +49,8 @@ huly skills uninstall --all      # remove huly-owned skills
 | `--dry-run` | print what would change; write nothing |
 | `--fail-on-conflict` | exit non-zero if any target conflicts (for CI) |
 | `--output json` | machine-readable results |
+| `--yes` | skip the interactive confirmation |
+| `--no-interactive` | never prompt; require `--all`/`--agents` |
 
 ## How updates work
 
