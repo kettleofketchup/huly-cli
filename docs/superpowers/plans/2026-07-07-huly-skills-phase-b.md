@@ -193,6 +193,11 @@ func listLabel(r skills.Result) string {
 	case skills.StatusUpToDate:
 		return "installed"
 	case skills.StatusUpdated:
+		// A pre-hash "adopted" skill already has current content — only its
+		// provenance stamp is refreshed — so it is installed, not behind.
+		if r.Reason == "adopted" {
+			return "installed"
+		}
 		return "update available"
 	case skills.StatusConflict:
 		if r.Reason == "modified" {
@@ -328,7 +333,7 @@ git commit -m "feat(skills): skills group + list command; memoize catalog"
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `src/huly/cmd/skills_test.go` (add imports `bytes`, `strings`, `encoding/json`):
+Add to `src/huly/cmd/skills_test.go` (add imports `bytes`, `strings`, `encoding/json`, `os`, `path/filepath`):
 
 ```go
 func TestResolveTargetSkills(t *testing.T) {
@@ -365,17 +370,31 @@ func TestResolveAgents(t *testing.T) {
 	if len(all) != 2 {
 		t.Errorf("--all resolved %d, want 2 present", len(all))
 	}
-	// --agents csv, present
+	// --agents csv, present — assert WHICH agents, not just the count (2 would
+	// also match a broken impl that ignores the selector and returns all).
 	sel, err := resolveAgents(detected, "claude,pi", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sel) != 2 {
-		t.Errorf("csv resolved %d", len(sel))
+	if len(sel) != 2 || sel[0].ID != "claude" || sel[1].ID != "pi" {
+		t.Errorf("csv resolved = %+v, want [claude pi]", sel)
 	}
 	// --agents naming an ABSENT agent -> error
 	if _, err := resolveAgents(detected, "codex", false); err == nil {
 		t.Error("selecting an absent agent should error")
+	}
+	// --agents naming a wholly UNKNOWN id -> error
+	if _, err := resolveAgents(detected, "bogus", false); err == nil {
+		t.Error("selecting an unknown agent id should error")
+	}
+	// whitespace in the csv is trimmed
+	trimmed, err := resolveAgents(detected, " claude , pi ", false)
+	if err != nil || len(trimmed) != 2 || trimmed[0].ID != "claude" || trimmed[1].ID != "pi" {
+		t.Errorf("whitespace csv resolved = %+v (err %v), want [claude pi]", trimmed, err)
+	}
+	// a csv with no real ids errors (doesn't silently resolve to nothing)
+	if _, err := resolveAgents(detected, " , ,", false); err == nil {
+		t.Error("comma-only csv should error")
 	}
 	// neither --all nor --agents -> error
 	if _, err := resolveAgents(detected, "", false); err == nil {
@@ -425,6 +444,107 @@ func TestRenderResultsAndConflict(t *testing.T) {
 		t.Error("anyConflict should be false without a conflict")
 	}
 }
+
+func TestRenderResultsJSONFields(t *testing.T) {
+	// A result with no reason must OMIT the reason key; path must be present.
+	results := []skills.Result{
+		{Skill: "s", Agent: "claude", Path: "/home/x/.claude/skills/s", Status: skills.StatusInstalled},
+	}
+	var buf bytes.Buffer
+	if err := renderResults(&buf, results, true); err != nil {
+		t.Fatal(err)
+	}
+	var raw []map[string]json.RawMessage
+	if err := json.Unmarshal(buf.Bytes(), &raw); err != nil {
+		t.Fatalf("json invalid: %v\n%s", err, buf.String())
+	}
+	if _, present := raw[0]["reason"]; present {
+		t.Errorf("empty reason should be omitted:\n%s", buf.String())
+	}
+	if _, present := raw[0]["path"]; !present {
+		t.Errorf("path field missing:\n%s", buf.String())
+	}
+	var typed []map[string]any
+	_ = json.Unmarshal(buf.Bytes(), &typed)
+	if typed[0]["path"] != "/home/x/.claude/skills/s" {
+		t.Errorf("path = %v", typed[0]["path"])
+	}
+}
+
+func TestExitError(t *testing.T) {
+	clean := []skills.Result{{Status: skills.StatusInstalled}}
+	conflict := []skills.Result{{Status: skills.StatusConflict, Reason: "modified"}}
+
+	if err := exitError(clean, false, false); err != nil {
+		t.Errorf("clean run should exit 0, got %v", err)
+	}
+	if err := exitError(clean, false, true); err != nil {
+		t.Errorf("--fail-on-conflict with no conflict should exit 0, got %v", err)
+	}
+	if err := exitError(conflict, false, false); err != nil {
+		t.Errorf("conflict without --fail-on-conflict is a policy skip (exit 0), got %v", err)
+	}
+	if err := exitError(conflict, false, true); err == nil {
+		t.Error("conflict with --fail-on-conflict should be non-zero")
+	}
+	if err := exitError(clean, true, false); err == nil {
+		t.Error("a failed target must be non-zero regardless of --fail-on-conflict")
+	}
+}
+
+func TestListLabelDefaultBranch(t *testing.T) {
+	for _, s := range []skills.Status{skills.StatusRepaired, skills.StatusRemoved, skills.StatusSkipped} {
+		if got := listLabel(skills.Result{Status: s}); got != string(s) {
+			t.Errorf("listLabel(%s) = %q, want %q (default passthrough)", s, got, string(s))
+		}
+	}
+}
+
+func TestListLabelAdoptedIsInstalled(t *testing.T) {
+	got := listLabel(skills.Result{Status: skills.StatusUpdated, Reason: "adopted"})
+	if got != "installed" {
+		t.Errorf("adopted should read as installed, got %q", got)
+	}
+}
+
+// End-to-end wiring: drive the engine through a t.TempDir()-based agent (using
+// the pure DetectAgents(Dirs)) and render the results — catches pairing/format
+// bugs the isolated unit tests can't.
+func TestSkillsInstallUpdateUninstallEndToEnd(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	present := presentAgents(skills.DetectAgents(skills.Dirs{Home: tmp, ConfigHome: tmp}))
+	if len(present) != 1 || present[0].ID != "claude" {
+		t.Fatalf("expected only claude present, got %+v", present)
+	}
+	cat, err := skills.Catalog()
+	if err != nil || len(cat) == 0 {
+		t.Fatalf("catalog: %v", err)
+	}
+	sk, opts := cat[0], skills.InstallOpts{CurrentVersion: "test"}
+
+	r, err := skills.Install(sk, present[0], opts)
+	if err != nil || r.Status != skills.StatusInstalled {
+		t.Fatalf("install: status=%s err=%v", r.Status, err)
+	}
+	r2, err := skills.Update(sk, present[0], opts)
+	if err != nil || r2.Status != skills.StatusUpToDate {
+		t.Fatalf("update: status=%s err=%v", r2.Status, err)
+	}
+	var buf bytes.Buffer
+	if err := renderResults(&buf, []skills.Result{r, r2}, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "installed") || !strings.Contains(buf.String(), "up-to-date") {
+		t.Errorf("render missing tokens:\n%s", buf.String())
+	}
+	r3, err := skills.Uninstall(sk, present[0], opts)
+	if err != nil || r3.Status != skills.StatusRemoved {
+		t.Fatalf("uninstall: status=%s err=%v", r3.Status, err)
+	}
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -447,11 +567,21 @@ func resolveTargetSkills(args []string) ([]skills.Skill, error) {
 	for _, name := range args {
 		sk, ok := skills.Get(name)
 		if !ok {
-			return nil, fmt.Errorf("unknown skill %q (run `huly skills list`)", name)
+			return nil, fmt.Errorf("unknown skill %q; available: %s", name, strings.Join(catalogNames(), ", "))
 		}
 		out = append(out, sk)
 	}
 	return out, nil
+}
+
+// catalogNames returns the embedded skill names for error messages.
+func catalogNames() []string {
+	cat, _ := skills.Catalog()
+	out := make([]string, 0, len(cat))
+	for _, s := range cat {
+		out = append(out, s.Name)
+	}
+	return out
 }
 
 // resolveAgents picks the target agents from a detected set. It is pure so it
@@ -531,6 +661,20 @@ func anyConflict(results []skills.Result) bool {
 		}
 	}
 	return false
+}
+
+// exitError decides the CLI exit outcome from the per-target results: a
+// genuine engine failure always fails the run; otherwise a conflict fails it
+// only when --fail-on-conflict was requested. Everything else (policy skips)
+// exits 0. Extracted so the exit logic is unit-testable without a TTY/$HOME.
+func exitError(results []skills.Result, failed, failOnConflict bool) error {
+	if failed {
+		return fmt.Errorf("one or more targets failed")
+	}
+	if failOnConflict && anyConflict(results) {
+		return fmt.Errorf("conflicts detected (use --force to override, or resolve manually)")
+	}
+	return nil
 }
 ```
 
@@ -612,13 +756,7 @@ func runSkillsOp(op string, args []string) error {
 	if err := renderResults(os.Stdout, results, viper.GetString("output") == "json"); err != nil {
 		return err
 	}
-	if failed {
-		return fmt.Errorf("one or more targets failed")
-	}
-	if skillsFailOnConflict && anyConflict(results) {
-		return fmt.Errorf("conflicts detected (use --force to override, or resolve manually)")
-	}
-	return nil
+	return exitError(results, failed, skillsFailOnConflict)
 }
 ```
 
@@ -639,7 +777,9 @@ func init() {
 }
 ```
 
-Note: the old `init()` from Task 1 registered only `skillsListCmd`; replace it with this fuller `init()` (there must be exactly ONE `init()` in `skills.go`). `completeSkills`/`completeAgents` are added in Task 3 — until then this won't compile, so Step 5 stubs them; Task 3 fills them in. To keep Task 2 self-contained, add minimal real implementations of `completeSkills`/`completeAgents` now (they're small) in `skills_run.go`:
+**Important — replace, do not append, the `init()`:** Task 1's `skills.go` already has an `init()` that registers only `skillsListCmd`. Go allows multiple `init()` per file and cobra's `AddCommand` does not de-dup, so a second `init()` would register `skillsCmd`/`skillsListCmd` twice → duplicate subcommands in `--help` and completion. **Delete Task 1's `init()` and replace it with the fuller one below** — there must be exactly ONE `init()` in `skills.go`. (Task 3 adds a `TestNoDuplicateSkillsSubcommands` guard.)
+
+`completeSkills`/`completeAgents` are used by the commands' `ValidArgsFunction`/flag completion, so add their real implementations now (they're small) in `skills_run.go`:
 
 ```go
 // completeSkills completes skill-name args from the catalog.
@@ -663,8 +803,8 @@ func completeAgents(_ *cobra.Command, _ []string, toComplete string) ([]string, 
 
 - [ ] **Step 5: Run tests + build**
 
-Run: `cd src/huly && go build ./... && go test ./cmd/ -run 'TestResolve|TestRenderResults' -v`
-Expected: build OK; tests PASS.
+Run: `cd src/huly && go build ./... && go test ./cmd/ -run 'TestResolve|TestRenderResults|TestExitError|TestListLabel|TestSkillsInstallUpdate' -v`
+Expected: build OK; all tests PASS (resolution, render/JSON-fields, exit-error, listLabel default+adopted, and the end-to-end wiring test).
 
 - [ ] **Step 6: Smoke-test end to end into a temp agent**
 
@@ -689,20 +829,19 @@ git commit -m "feat(skills): install/update/uninstall commands with flags, token
 
 ---
 
-### Task 3: Shell completion registration + post-update staleness hint
+### Task 3: Completion + duplicate-subcommand guard + seed command-existence guard + post-update hint
 
 **Files:**
-- Modify: `src/huly/cmd/skills.go` (register `completeSkills` as ValidArgsFunction — already set on the commands in Task 2; this task adds an explicit test-backed check and the update hint)
 - Modify: `src/huly/cmd/update.go`
 - Modify: `src/huly/cmd/skills_test.go`
 
 **Interfaces:**
-- Consumes: `completeSkills`/`completeAgents` (Task 2).
-- Produces: a completion smoke test; a post-update hint line in `runUpdate`.
+- Consumes: `completeSkills`/`completeAgents` (Task 2), `rootCmd` (package `cmd`), the seed asset on disk.
+- Produces: a completion test; `TestNoDuplicateSkillsSubcommands` (guards the init()-append bug); `TestSeedSkillCommandsExist` (spec §7 criterion 2 — the seed's `huly …` commands must resolve to real leaf commands); a post-update hint line in `runUpdate`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
-Add to `src/huly/cmd/skills_test.go`:
+Add to `src/huly/cmd/skills_test.go` (add imports `regexp`; `os`/`path/filepath`/`strings` are already imported from Task 2):
 
 ```go
 func TestCompleteSkillsAndAgents(t *testing.T) {
@@ -716,23 +855,84 @@ func TestCompleteSkillsAndAgents(t *testing.T) {
 	if !found {
 		t.Errorf("completeSkills missing seed skill: %v", sk)
 	}
-	// prefix filtering works
 	if got, _ := completeSkills(nil, nil, "zzz"); len(got) != 0 {
 		t.Errorf("prefix zzz should match nothing, got %v", got)
 	}
 
 	ag, _ := completeAgents(nil, nil, "co")
-	// "co" matches codex only
 	if len(ag) != 1 || ag[0] != "codex" {
 		t.Errorf("completeAgents(co) = %v, want [codex]", ag)
 	}
 }
+
+// Guards the init()-append bug: skills has exactly 4 subcommands
+// (list, install, update, uninstall). A duplicate init() would double them.
+func TestNoDuplicateSkillsSubcommands(t *testing.T) {
+	if n := len(skillsCmd.Commands()); n != 4 {
+		names := make([]string, 0, n)
+		for _, c := range skillsCmd.Commands() {
+			names = append(names, c.Name())
+		}
+		t.Errorf("skills has %d subcommands %v, want 4 (duplicate init()?)", n, names)
+	}
+}
+
+// Spec §7 criterion 2: every `huly …` command shown in the seed skill's code
+// spans must resolve to a real leaf command, so a renamed/removed command
+// breaks CI instead of shipping a lying skill.
+func TestSeedSkillCommandsExist(t *testing.T) {
+	raw, err := os.ReadFile("../internal/skills/assets/huly-issue-tracking/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spans := codeSpanText(string(raw))
+	// huly <verb...> up to the first flag/placeholder (regex stops at non
+	// [a-z-] tokens, i.e. --flags, <ID>, [x], quotes, uppercase).
+	re := regexp.MustCompile(`huly ([a-z][a-z-]*(?: [a-z][a-z-]*)*)`)
+	seen := map[string]bool{}
+	for _, m := range re.FindAllStringSubmatch(spans, -1) {
+		path := strings.Fields(m[1])
+		c, rest, err := rootCmd.Find(path)
+		if err != nil || len(rest) != 0 || c.HasSubCommands() {
+			t.Errorf("seed references `huly %s` which is not a real leaf command (err=%v rest=%v)",
+				strings.Join(path, " "), err, rest)
+		}
+		seen[strings.Join(path, " ")] = true
+	}
+	for _, required := range []string{"project list", "component create", "issue create"} {
+		if !seen[required] {
+			t.Errorf("seed skill must document `huly %s` in a code span", required)
+		}
+	}
+}
+
+// codeSpanText returns only the text inside fenced ``` blocks and inline
+// `code` spans, so prose (e.g. "run huly to …") never yields false commands.
+func codeSpanText(md string) string {
+	var b strings.Builder
+	inFence := false
+	for _, line := range strings.Split(md, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			b.WriteString(line)
+			b.WriteByte('\n')
+		}
+	}
+	for _, m := range regexp.MustCompile("`([^`]*)`").FindAllStringSubmatch(md, -1) {
+		b.WriteString(m[1])
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
 ```
 
-- [ ] **Step 2: Run test to verify it fails or passes**
+- [ ] **Step 2: Run tests**
 
-Run: `cd src/huly && go test ./cmd/ -run TestCompleteSkillsAndAgents -v`
-Expected: PASS if Task 2 already added `completeSkills`/`completeAgents` (this test just pins their behavior). If it fails to compile, those funcs are missing — add them per Task 2 Step 4.
+Run: `cd src/huly && go test ./cmd/ -run 'TestCompleteSkillsAndAgents|TestNoDuplicateSkillsSubcommands|TestSeedSkillCommandsExist' -v`
+Expected: `TestCompleteSkillsAndAgents` and `TestNoDuplicateSkillsSubcommands` PASS (Task 2 shipped the funcs + single init()); `TestSeedSkillCommandsExist` PASS (all `huly …` commands in the seed resolve to real leaf commands). If `TestSeedSkillCommandsExist` fails, either a seed command was mistyped/renamed or the extraction regex needs adjusting — fix whichever is actually wrong (do not weaken the assertion).
 
 - [ ] **Step 3: Add the post-update staleness hint**
 
@@ -744,8 +944,8 @@ In `src/huly/cmd/update.go`, at the very end of `runUpdate()` (after the existin
 
 - [ ] **Step 4: Run tests + build**
 
-Run: `cd src/huly && go build ./... && go test ./cmd/ -run TestCompleteSkillsAndAgents -v`
-Expected: build OK; test PASS.
+Run: `cd src/huly && go build ./... && go test ./cmd/ -run 'TestComplete|TestNoDuplicate|TestSeedSkillCommands' -v`
+Expected: build OK; all three PASS.
 
 - [ ] **Step 5: Verify completion is wired**
 
@@ -756,7 +956,7 @@ Expected: output includes `huly-issue-tracking` (Cobra's completion for the skil
 
 ```bash
 git add src/huly/cmd/update.go src/huly/cmd/skills_test.go
-git commit -m "feat(skills): completion checks + post-update staleness hint"
+git commit -m "feat(skills): completion + no-dup-subcommand + seed-command-exists guards + post-update hint"
 ```
 
 ---
@@ -857,6 +1057,8 @@ git commit -m "docs(skills): add huly skills page + nav entry"
 - `install`/`update`/`uninstall` with `--agents`/`--all`/`--force`/`--dry-run`/`--fail-on-conflict`; explicit-selector-required (no picker in B) → Task 2. ✓
 - ASCII status tokens + `--output json` for mutating commands + exit codes (0 on policy-skip, non-zero on error / `--fail-on-conflict`) → Task 2. ✓
 - Completion (`completeSkills`/`completeAgents`) + post-`huly update` staleness hint → Tasks 2/3. ✓
+- **Seed criterion 2 (spec §7): command-existence guard** — `TestSeedSkillCommandsExist` extracts `huly …` from the seed's code spans and asserts each `rootCmd.Find`s to a real leaf, plus the required set → Task 3. ✓
+- `TestNoDuplicateSkillsSubcommands` guards the init()-append duplicate-subcommand bug → Task 3. ✓
 - Docs page + nav → Task 4. ✓
 - `Catalog()` memoization (A2 follow-up, needed because Phase B loops) → Task 1. ✓
 
