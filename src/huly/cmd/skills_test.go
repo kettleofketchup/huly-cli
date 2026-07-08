@@ -134,6 +134,13 @@ func TestResolveAgents(t *testing.T) {
 	}
 }
 
+func TestResolveAgentsAllAndAgentsConflict(t *testing.T) {
+	detected := []skills.Agent{{ID: "claude", Present: true}, {ID: "pi", Present: true}}
+	if _, err := resolveAgents(detected, "claude", true); err == nil {
+		t.Error("passing both --all and --agents should error")
+	}
+}
+
 func TestRenderResultsAndConflict(t *testing.T) {
 	results := []skills.Result{
 		{Skill: "s", Agent: "claude", Path: "/p", Status: skills.StatusInstalled},

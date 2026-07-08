@@ -104,6 +104,9 @@ func resolveAgents(detected []skills.Agent, agentsCSV string, all bool) ([]skill
 	if len(present) == 0 {
 		return nil, fmt.Errorf("%s", noAgentsMessage(detected))
 	}
+	if all && agentsCSV != "" {
+		return nil, fmt.Errorf("pass either --all or --agents, not both")
+	}
 	if all {
 		return present, nil
 	}

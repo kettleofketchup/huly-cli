@@ -46,16 +46,21 @@ func runSkillsList(_ *cobra.Command, _ []string) error {
 		return err
 	}
 	present := presentAgents(agents)
-	if len(present) == 0 {
-		fmt.Fprintln(os.Stderr, noAgentsMessage(agents))
-		return nil
-	}
 
 	type listRow struct {
 		Skill  string `json:"skill"`
 		Agent  string `json:"agent"`
 		Status string `json:"status"`
 	}
+
+	if len(present) == 0 {
+		if viper.GetString("output") == "json" {
+			return output.JSON(os.Stdout, []listRow{})
+		}
+		fmt.Fprintln(os.Stderr, noAgentsMessage(agents))
+		return nil
+	}
+
 	var rows []listRow
 	anyInstalled := false
 	for _, sk := range cat {
