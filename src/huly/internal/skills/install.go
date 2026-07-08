@@ -169,9 +169,10 @@ func restampVersion(md string, raw []byte, version, hash string) error {
 	return os.WriteFile(md, out, 0o644)
 }
 
-// Uninstall removes a skill from an agent, but only one huly owns unless Force.
-// A foreign/unreadable dir removed under Force is backed up (never destroyed),
-// mirroring install --force and the "never destroy unproven content" rule.
+// Uninstall removes a skill from an agent, but only skills huly owns unless
+// Force. A foreign/unreadable dir removed under Force is backed up (never
+// destroyed), mirroring install --force and the "never destroy unproven
+// content" rule.
 func Uninstall(sk Skill, ag Agent, o InstallOpts) (Result, error) {
 	dest := filepath.Join(ag.SkillsDir, sk.Name)
 	res := Result{Skill: sk.Name, Agent: ag.ID, Path: dest}
