@@ -302,15 +302,13 @@ func TestCompleteSkillsAndAgents(t *testing.T) {
 	}
 }
 
-// Guards the init()-append bug: skills has exactly 4 subcommands
-// (list, install, update, uninstall). A duplicate init() would double them.
 func TestNoDuplicateSkillsSubcommands(t *testing.T) {
-	if n := len(skillsCmd.Commands()); n != 4 {
+	if n := len(skillsCmd.Commands()); n != 5 {
 		names := make([]string, 0, n)
 		for _, c := range skillsCmd.Commands() {
 			names = append(names, c.Name())
 		}
-		t.Errorf("skills has %d subcommands %v, want 4 (duplicate init()?)", n, names)
+		t.Errorf("skills has %d subcommands %v, want 5 (duplicate init()?)", n, names)
 	}
 }
 

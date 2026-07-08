@@ -9,6 +9,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/kettleofketchup/huly-cli/src/huly/internal/skills"
+	"github.com/kettleofketchup/huly-cli/src/huly/version"
 )
 
 // errCancelled marks a user-aborted form (Ctrl-C/Esc). Command RunE wrappers
@@ -95,4 +96,95 @@ func confirmApply(action string, skillNames, agentIDs []string) (bool, error) {
 		return false, err
 	}
 	return ok, nil
+}
+
+// runDashboard is the bare `huly skills` interactive flow: choose skills, then
+// agents, then an action, then apply and print the result tokens.
+func runDashboard() error {
+	cat, err := skills.Catalog()
+	if err != nil {
+		return err
+	}
+	detected, err := skills.Detect()
+	if err != nil {
+		return err
+	}
+	present := presentAgents(detected)
+	if len(present) == 0 {
+		return fmt.Errorf("%s", noAgentsMessage(detected))
+	}
+
+	skillOpts := make([]huh.Option[string], 0, len(cat))
+	for _, s := range cat {
+		skillOpts = append(skillOpts, huh.NewOption(s.Name, s.Name).Selected(true))
+	}
+	agentOpts := make([]huh.Option[string], 0, len(present))
+	for _, a := range present {
+		agentOpts = append(agentOpts, huh.NewOption(a.Label, a.ID).Selected(true))
+	}
+
+	var chosenSkills, chosenAgents []string
+	var action string
+	form := huh.NewForm(
+		huh.NewGroup(huh.NewMultiSelect[string]().Title("Skills").Options(skillOpts...).Value(&chosenSkills)),
+		huh.NewGroup(huh.NewMultiSelect[string]().Title("Agents").Options(agentOpts...).Value(&chosenAgents)),
+		huh.NewGroup(huh.NewSelect[string]().Title("Action").
+			Options(huh.NewOption("Install", "install"), huh.NewOption("Update", "update"), huh.NewOption("Uninstall", "uninstall")).
+			Value(&action)),
+	)
+	if err := runForm(form); err != nil {
+		return err
+	}
+	if len(chosenSkills) == 0 || len(chosenAgents) == 0 {
+		fmt.Fprintln(os.Stderr, "nothing selected")
+		return nil
+	}
+
+	// Always confirm before applying (the dashboard has no --yes flag, and the
+	// action may be a destructive uninstall).
+	ok, err := confirmApply(action, chosenSkills, chosenAgents)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		fmt.Fprintln(os.Stderr, "cancelled")
+		return nil
+	}
+
+	// Resolve selections back to engine types and apply.
+	byAgent := map[string]skills.Agent{}
+	for _, a := range present {
+		byAgent[a.ID] = a
+	}
+	opts := skills.InstallOpts{CurrentVersion: version.Version, Force: skillsForce, DryRun: skillsDryRun}
+	var results []skills.Result
+	failed := false
+	for _, name := range chosenSkills {
+		sk, ok := skills.Get(name)
+		if !ok {
+			continue
+		}
+		for _, id := range chosenAgents {
+			ag := byAgent[id]
+			var r skills.Result
+			var e error
+			switch action {
+			case "install":
+				r, e = skills.Install(sk, ag, opts)
+			case "update":
+				r, e = skills.Update(sk, ag, opts)
+			case "uninstall":
+				r, e = skills.Uninstall(sk, ag, opts)
+			}
+			if e != nil {
+				r = skills.Result{Skill: sk.Name, Agent: ag.ID, Status: "error", Reason: e.Error()}
+				failed = true
+			}
+			results = append(results, r)
+		}
+	}
+	if err := renderResults(os.Stdout, results, false); err != nil {
+		return err
+	}
+	return exitError(results, failed, skillsFailOnConflict)
 }

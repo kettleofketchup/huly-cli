@@ -30,6 +30,25 @@ machine (Claude Code, Codex, opencode, Cursor, Pi).
 
 Run 'huly skills list' to see status, and 'huly skills install --all' to add
 them to every detected agent.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		if isInteractive(false) {
+			return silenceCancel(runDashboard())
+		}
+		return cmd.Help()
+	},
+}
+
+var skillsTUICmd = &cobra.Command{
+	Use:   "tui",
+	Short: "Open the interactive skills dashboard",
+	Args:  cobra.NoArgs,
+	RunE: func(_ *cobra.Command, _ []string) error {
+		if !isInteractive(false) {
+			return fmt.Errorf("`huly skills tui` requires an interactive terminal")
+		}
+		return silenceCancel(runDashboard())
+	},
 }
 
 var skillsListCmd = &cobra.Command{
@@ -195,6 +214,6 @@ func init() {
 		c.Flags().BoolVar(&skillsNoInteractive, "no-interactive", false, "never prompt; require --all/--agents")
 		_ = c.RegisterFlagCompletionFunc("agents", completeAgents)
 	}
-	skillsCmd.AddCommand(skillsListCmd, skillsInstallCmd, skillsUpdateCmd, skillsUninstallCmd)
+	skillsCmd.AddCommand(skillsListCmd, skillsInstallCmd, skillsUpdateCmd, skillsUninstallCmd, skillsTUICmd)
 	rootCmd.AddCommand(skillsCmd)
 }
