@@ -232,9 +232,15 @@ ignores dot-prefixed dirs.
    (reason `foreign`); skip unless `--force`.
 4. **`dest` present, ours** — compare on-disk content hash to stored
    `content_hash`:
-   - **stored hash missing** (ours but pre-hash) → adopt: re-stamp
-     `content_hash=embHash` (+ copy tree if `embHash` differs) → `updated`
-     (reason `adopted`).
+   - **stored hash missing** (ours but pre-hash) → adopt **without
+     clobbering**: if the on-disk body already matches the embedded tree
+     (`onDisk == embHash`), stamp `content_hash` only (hash-neutral, no
+     copy) → `updated` (reason `adopted`); if it diverges, the state is
+     ambiguous (old shipped content vs a user edit) → treat as `conflict`
+     (reason `modified`), backed up + replaced only under `--force`. (This
+     supersedes an earlier "always copy tree if embHash differs" wording,
+     which would have destroyed a possible user edit — the code
+     deliberately does not do that.)
    - **on-disk == stored** (unmodified):
      - `embHash == stored` → `up-to-date`. Provenance-refresh only:
        re-stamp `huly_cli_version=cur` if changed (hash-neutral, no copy).
@@ -452,3 +458,22 @@ All five agents in scope. Trim order if needed: drop **Phase C**'s dashboard
 Phase B non-interactive CLI + one seed skill is the irreducible core.
 Deferred by design (engine already shaped for them): `--scope project`,
 frontmatter-only-change detection, 3-way merge, network-fetched catalogs.
+
+## Known follow-ups (tracked, not yet needed)
+
+- **Executable files in a skill.** `writeTree` writes every copied file
+  `0o644`, and `//go:embed` strips the exec bit, so a skill that ships an
+  executable `scripts/*.sh` would install non-executable. Unreachable with
+  the current SKILL.md-only seed. **Hard prerequisite before the first
+  script-bearing skill ships:** a per-skill exec manifest (or shebang
+  detection / `chmod +x scripts/**`) plus a test that installs a skill
+  containing `scripts/foo.sh` and asserts its mode.
+- **`Catalog()` memoization.** `Get` re-parses the embedded FS per call;
+  memoize (e.g. `sync.Once`) when Phase B's `install [name...]` loops over
+  agents.
+- **Concurrent installs into one agent.** `sweepStale` is scoped to the
+  temp-dir naming convention, not the specific skill; two `huly` processes
+  installing into the same `SkillsDir` could sweep each other's in-flight
+  temp dir (one spurious failure, no data loss). Phase B should not
+  parallelize installs into a single agent, or `sweepStale` should
+  prefix-match the target skill's base name.

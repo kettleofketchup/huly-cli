@@ -86,7 +86,9 @@ func sweepStale(parent string) {
 	}
 	for _, e := range entries {
 		n := e.Name()
-		if strings.HasPrefix(n, ".") && strings.Contains(n, ".new-") {
+		// Only ever remove DIRS matching our temp convention — never a stray
+		// dot-file that happens to contain ".new-".
+		if e.IsDir() && strings.HasPrefix(n, ".") && strings.Contains(n, ".new-") {
 			_ = os.RemoveAll(filepath.Join(parent, n))
 		}
 	}
