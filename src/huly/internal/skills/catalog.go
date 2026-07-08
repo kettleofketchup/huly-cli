@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"strings"
+	"sync"
 )
 
 //go:embed all:assets
@@ -17,9 +18,21 @@ type Skill struct {
 	fsPath      string // path within assetsFS, e.g. "assets/huly-issue-tracking"
 }
 
-// Catalog returns every embedded skill, one per non-dot directory under
-// assets/. Dot-prefixed entries are ignored.
+var (
+	catalogOnce sync.Once
+	catalogVal  []Skill
+	catalogErr  error
+)
+
+// Catalog returns the embedded skills, parsing the embedded FS once.
 func Catalog() ([]Skill, error) {
+	catalogOnce.Do(func() { catalogVal, catalogErr = loadCatalog() })
+	return catalogVal, catalogErr
+}
+
+// loadCatalog walks assets/ and parses each SKILL.md frontmatter, one per
+// non-dot directory under assets/. Dot-prefixed entries are ignored.
+func loadCatalog() ([]Skill, error) {
 	entries, err := fs.ReadDir(assetsFS, "assets")
 	if err != nil {
 		return nil, fmt.Errorf("read embedded assets: %w", err)
