@@ -808,17 +808,20 @@ Expected: build OK; all tests PASS (resolution, render/JSON-fields, exit-error, 
 
 - [ ] **Step 6: Smoke-test end to end into a temp agent**
 
-Run:
+Run (override BOTH `HOME` and `XDG_CONFIG_HOME` so opencode — which resolves
+from `XDG_CONFIG_HOME` — is isolated to the temp dir and the smoke never
+touches your real agent configs):
 ```bash
 cd src/huly
 TMP=$(mktemp -d)
-HOME=$TMP mkdir -p "$TMP/.claude"
-HOME=$TMP go run . skills install --all
-HOME=$TMP go run . skills list
-HOME=$TMP go run . skills update --all
-HOME=$TMP go run . skills uninstall --all
+mkdir -p "$TMP/.claude"
+export SANDBOX="HOME=$TMP XDG_CONFIG_HOME=$TMP/.config"
+env HOME="$TMP" XDG_CONFIG_HOME="$TMP/.config" go run . skills install --all
+env HOME="$TMP" XDG_CONFIG_HOME="$TMP/.config" go run . skills list
+env HOME="$TMP" XDG_CONFIG_HOME="$TMP/.config" go run . skills update --all
+env HOME="$TMP" XDG_CONFIG_HOME="$TMP/.config" go run . skills uninstall --all
 ```
-Expected: install prints `installed  huly-issue-tracking → claude`; the skill dir appears at `$TMP/.claude/skills/huly-issue-tracking/SKILL.md`; list shows `installed`; second update shows `up-to-date`; uninstall shows `removed`. Exit 0 throughout.
+Expected: install prints `installed  huly-issue-tracking → claude`; the skill dir appears at `$TMP/.claude/skills/huly-issue-tracking/SKILL.md`; list shows `installed`; second update shows `up-to-date`; uninstall shows `removed`. Exit 0 throughout. (Overriding `XDG_CONFIG_HOME` matters: without it opencode resolves to your real `~/.config/opencode` and the smoke would install/uninstall into a real agent dir.)
 
 - [ ] **Step 7: Commit**
 
