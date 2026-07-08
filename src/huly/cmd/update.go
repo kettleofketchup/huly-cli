@@ -99,6 +99,7 @@ func runUpdate() error {
 
 	fmt.Printf("Successfully updated from v%s to v%s!\n", currentVersion, latestVersion)
 	fmt.Println("You may need to restart your terminal for changes to take effect.")
+	fmt.Println("Installed agent skills may now be behind. Run `huly skills update` to refresh them.")
 
 	return nil
 }

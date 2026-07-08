@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -271,4 +272,88 @@ func TestSkillsInstallUpdateUninstallEndToEnd(t *testing.T) {
 	if err != nil || r3.Status != skills.StatusRemoved {
 		t.Fatalf("uninstall: status=%s err=%v", r3.Status, err)
 	}
+}
+
+func TestCompleteSkillsAndAgents(t *testing.T) {
+	sk, _ := completeSkills(nil, nil, "")
+	found := false
+	for _, s := range sk {
+		if s == "huly-issue-tracking" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("completeSkills missing seed skill: %v", sk)
+	}
+	if got, _ := completeSkills(nil, nil, "zzz"); len(got) != 0 {
+		t.Errorf("prefix zzz should match nothing, got %v", got)
+	}
+
+	ag, _ := completeAgents(nil, nil, "co")
+	if len(ag) != 1 || ag[0] != "codex" {
+		t.Errorf("completeAgents(co) = %v, want [codex]", ag)
+	}
+}
+
+// Guards the init()-append bug: skills has exactly 4 subcommands
+// (list, install, update, uninstall). A duplicate init() would double them.
+func TestNoDuplicateSkillsSubcommands(t *testing.T) {
+	if n := len(skillsCmd.Commands()); n != 4 {
+		names := make([]string, 0, n)
+		for _, c := range skillsCmd.Commands() {
+			names = append(names, c.Name())
+		}
+		t.Errorf("skills has %d subcommands %v, want 4 (duplicate init()?)", n, names)
+	}
+}
+
+// Spec §7 criterion 2: every `huly …` command shown in the seed skill's code
+// spans must resolve to a real leaf command, so a renamed/removed command
+// breaks CI instead of shipping a lying skill.
+func TestSeedSkillCommandsExist(t *testing.T) {
+	raw, err := os.ReadFile("../internal/skills/assets/huly-issue-tracking/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spans := codeSpanText(string(raw))
+	// huly <verb...> up to the first flag/placeholder (regex stops at non
+	// [a-z-] tokens, i.e. --flags, <ID>, [x], quotes, uppercase).
+	re := regexp.MustCompile(`huly ([a-z][a-z-]*(?: [a-z][a-z-]*)*)`)
+	seen := map[string]bool{}
+	for _, m := range re.FindAllStringSubmatch(spans, -1) {
+		path := strings.Fields(m[1])
+		c, rest, err := rootCmd.Find(path)
+		if err != nil || len(rest) != 0 || c.HasSubCommands() {
+			t.Errorf("seed references `huly %s` which is not a real leaf command (err=%v rest=%v)",
+				strings.Join(path, " "), err, rest)
+		}
+		seen[strings.Join(path, " ")] = true
+	}
+	for _, required := range []string{"project list", "component create", "issue create"} {
+		if !seen[required] {
+			t.Errorf("seed skill must document `huly %s` in a code span", required)
+		}
+	}
+}
+
+// codeSpanText returns only the text inside fenced ``` blocks and inline
+// `code` spans, so prose (e.g. "run huly to …") never yields false commands.
+func codeSpanText(md string) string {
+	var b strings.Builder
+	inFence := false
+	for _, line := range strings.Split(md, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			b.WriteString(line)
+			b.WriteByte('\n')
+		}
+	}
+	for _, m := range regexp.MustCompile("`([^`]*)`").FindAllStringSubmatch(md, -1) {
+		b.WriteString(m[1])
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
