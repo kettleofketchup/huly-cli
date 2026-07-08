@@ -21,6 +21,7 @@ nav = [
   {"Components" = "components.md"},
   {"Cache sync" = "cache.md"},
   {"Shell completion" = "completion.md"},
+  {"Skills" = "skills.md"},
 ]
 
 # navigation.instant is intentionally absent: it breaks the logo/header when
