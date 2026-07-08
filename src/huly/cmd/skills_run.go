@@ -158,7 +158,7 @@ func renderResults(w io.Writer, results []skills.Result, jsonOut bool) error {
 		if r.Reason != "" {
 			reason = " (" + r.Reason + ")"
 		}
-		fmt.Fprintf(w, "%-12s %s → %s%s\n", r.Status, r.Skill, r.Agent, reason)
+		_, _ = fmt.Fprintf(w, "%-12s %s → %s%s\n", r.Status, r.Skill, r.Agent, reason)
 	}
 	return nil
 }
