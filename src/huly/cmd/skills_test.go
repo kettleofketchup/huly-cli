@@ -343,6 +343,24 @@ func TestSeedSkillCommandsExist(t *testing.T) {
 	}
 }
 
+func TestWantInteractive(t *testing.T) {
+	cases := []struct {
+		noInteractive, stdinTTY, stderrTTY, want bool
+	}{
+		{false, true, true, true},   // both TTY, not suppressed -> interactive
+		{true, true, true, false},   // --no-interactive forces batch
+		{false, false, true, false}, // stdin not a TTY (piped in)
+		{false, true, false, false}, // stderr not a TTY (redirected)
+		{false, false, false, false},
+	}
+	for _, c := range cases {
+		if got := wantInteractive(c.noInteractive, c.stdinTTY, c.stderrTTY); got != c.want {
+			t.Errorf("wantInteractive(no=%v,in=%v,err=%v) = %v, want %v",
+				c.noInteractive, c.stdinTTY, c.stderrTTY, got, c.want)
+		}
+	}
+}
+
 // codeSpanText returns only the text inside fenced ``` blocks and inline
 // `code` spans, so prose (e.g. "run huly to …") never yields false commands.
 func codeSpanText(md string) string {

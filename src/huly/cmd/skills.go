@@ -18,6 +18,8 @@ var (
 	skillsForce          bool
 	skillsDryRun         bool
 	skillsFailOnConflict bool
+	skillsYes            bool
+	skillsNoInteractive  bool
 )
 
 var skillsCmd = &cobra.Command{
@@ -95,21 +97,21 @@ var skillsInstallCmd = &cobra.Command{
 	Use:               "install [skill...]",
 	Short:             "Install embedded skills into agents",
 	ValidArgsFunction: completeSkills,
-	RunE:              func(_ *cobra.Command, args []string) error { return runSkillsOp("install", args) },
+	RunE:              func(_ *cobra.Command, args []string) error { return silenceCancel(runSkillsOp("install", args)) },
 }
 
 var skillsUpdateCmd = &cobra.Command{
 	Use:               "update [skill...]",
 	Short:             "Update huly-owned skills that are behind",
 	ValidArgsFunction: completeSkills,
-	RunE:              func(_ *cobra.Command, args []string) error { return runSkillsOp("update", args) },
+	RunE:              func(_ *cobra.Command, args []string) error { return silenceCancel(runSkillsOp("update", args)) },
 }
 
 var skillsUninstallCmd = &cobra.Command{
 	Use:               "uninstall [skill...]",
 	Short:             "Remove huly-owned skills from agents",
 	ValidArgsFunction: completeSkills,
-	RunE:              func(_ *cobra.Command, args []string) error { return runSkillsOp("uninstall", args) },
+	RunE:              func(_ *cobra.Command, args []string) error { return silenceCancel(runSkillsOp("uninstall", args)) },
 }
 
 // runSkillsOp resolves the target skills and agents, runs the engine op for
@@ -125,9 +127,32 @@ func runSkillsOp(op string, args []string) error {
 	if err != nil {
 		return err
 	}
-	agents, err := resolveAgents(detected, skillsAgents, skillsAll)
-	if err != nil {
-		return err
+	var agents []skills.Agent
+	if skillsAgents == "" && !skillsAll && isInteractive(skillsNoInteractive) {
+		// No explicit selector at a terminal: show the picker.
+		present := presentAgents(detected)
+		if len(present) == 0 {
+			return fmt.Errorf("%s", noAgentsMessage(detected))
+		}
+		agents, err = pickAgents(present)
+		if err != nil {
+			return err
+		}
+		if !skillsYes {
+			ok, cerr := confirmApply(op, skillNames(sks), presentIDs(agents))
+			if cerr != nil {
+				return cerr
+			}
+			if !ok {
+				fmt.Fprintln(os.Stderr, "cancelled")
+				return nil
+			}
+		}
+	} else {
+		agents, err = resolveAgents(detected, skillsAgents, skillsAll)
+		if err != nil {
+			return err
+		}
 	}
 	opts := skills.InstallOpts{CurrentVersion: version.Version, Force: skillsForce, DryRun: skillsDryRun}
 
@@ -166,6 +191,8 @@ func init() {
 		c.Flags().BoolVar(&skillsForce, "force", false, "override conflicts (backs the old dir up first)")
 		c.Flags().BoolVar(&skillsDryRun, "dry-run", false, "show what would change; write nothing")
 		c.Flags().BoolVar(&skillsFailOnConflict, "fail-on-conflict", false, "exit non-zero if any target conflicts")
+		c.Flags().BoolVar(&skillsYes, "yes", false, "skip the interactive confirmation")
+		c.Flags().BoolVar(&skillsNoInteractive, "no-interactive", false, "never prompt; require --all/--agents")
 		_ = c.RegisterFlagCompletionFunc("agents", completeAgents)
 	}
 	skillsCmd.AddCommand(skillsListCmd, skillsInstallCmd, skillsUpdateCmd, skillsUninstallCmd)

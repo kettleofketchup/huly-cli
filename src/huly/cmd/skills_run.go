@@ -22,6 +22,15 @@ func presentAgents(agents []skills.Agent) []skills.Agent {
 	return out
 }
 
+// skillNames returns the names of the given skills.
+func skillNames(sks []skills.Skill) []string {
+	out := make([]string, 0, len(sks))
+	for _, s := range sks {
+		out = append(out, s.Name)
+	}
+	return out
+}
+
 // presentIDs returns the ids of the given agents.
 func presentIDs(agents []skills.Agent) []string {
 	out := make([]string, 0, len(agents))
