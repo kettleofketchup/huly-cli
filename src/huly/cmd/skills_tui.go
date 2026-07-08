@@ -77,17 +77,21 @@ func pickAgents(present []skills.Agent) ([]skills.Agent, error) {
 		out = append(out, byID[id])
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no agents selected")
+		return nil, errCancelled
 	}
 	return out, nil
 }
 
 // confirmApply asks for a yes/no before a mutating action; returns the choice.
 func confirmApply(action string, skillNames, agentIDs []string) (bool, error) {
+	prep := "into"
+	if action == "uninstall" {
+		prep = "from"
+	}
 	ok := false
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
-			Title(fmt.Sprintf("%s %d skill(s) into %d agent(s)?", action, len(skillNames), len(agentIDs))).
+			Title(fmt.Sprintf("%s %d skill(s) %s %d agent(s)?", action, len(skillNames), prep, len(agentIDs))).
 			Affirmative("Yes").
 			Negative("No").
 			Value(&ok),
