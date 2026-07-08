@@ -83,6 +83,7 @@ Create `src/huly/cmd/skills_tui.go`:
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -91,6 +92,31 @@ import (
 
 	"github.com/kettleofketchup/huly-cli/src/huly/internal/skills"
 )
+
+// errCancelled marks a user-aborted form (Ctrl-C/Esc). Command RunE wrappers
+// map it to a clean "cancelled" message and exit 0 (nothing was written).
+var errCancelled = errors.New("cancelled")
+
+// runForm runs a huh form and normalizes a user abort to errCancelled.
+func runForm(f *huh.Form) error {
+	if err := f.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return errCancelled
+		}
+		return err
+	}
+	return nil
+}
+
+// silenceCancel converts errCancelled into a clean stderr message + nil (exit
+// 0). Command RunE funcs wrap their TUI-driven results with this.
+func silenceCancel(err error) error {
+	if errors.Is(err, errCancelled) {
+		fmt.Fprintln(os.Stderr, "cancelled")
+		return nil
+	}
+	return err
+}
 
 // wantInteractive is the pure interactivity decision: a huh form may run only
 // when both stdin and stderr are TTYs (huh renders to stderr) and the user did
@@ -120,7 +146,7 @@ func pickAgents(present []skills.Agent) ([]skills.Agent, error) {
 			Options(opts...).
 			Value(&chosen),
 	))
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		return nil, err
 	}
 	byID := map[string]skills.Agent{}
@@ -147,7 +173,7 @@ func confirmApply(action string, skillNames, agentIDs []string) (bool, error) {
 			Negative("No").
 			Value(&ok),
 	))
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		return false, err
 	}
 	return ok, nil
@@ -229,6 +255,13 @@ func skillNames(sks []skills.Skill) []string {
 		c.Flags().BoolVar(&skillsYes, "yes", false, "skip the interactive confirmation")
 		c.Flags().BoolVar(&skillsNoInteractive, "no-interactive", false, "never prompt; require --all/--agents")
 ```
+
+5. Wrap the three mutating commands' `RunE` with `silenceCancel` so a Ctrl-C/Esc during the picker or confirm exits cleanly (spec: "TUI cancelled → clean 'cancelled', nothing written"). Change each from `return runSkillsOp("install", args)` to:
+
+```go
+	RunE: func(_ *cobra.Command, args []string) error { return silenceCancel(runSkillsOp("install", args)) },
+```
+(and likewise `"update"`, `"uninstall"`).
 
 - [ ] **Step 7: Run tests + build + lint**
 
@@ -324,11 +357,22 @@ func runDashboard() error {
 			Options(huh.NewOption("Install", "install"), huh.NewOption("Update", "update"), huh.NewOption("Uninstall", "uninstall")).
 			Value(&action)),
 	)
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		return err
 	}
 	if len(chosenSkills) == 0 || len(chosenAgents) == 0 {
 		fmt.Fprintln(os.Stderr, "nothing selected")
+		return nil
+	}
+
+	// Always confirm before applying (the dashboard has no --yes flag, and the
+	// action may be a destructive uninstall).
+	ok, err := confirmApply(action, chosenSkills, chosenAgents)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		fmt.Fprintln(os.Stderr, "cancelled")
 		return nil
 	}
 
@@ -387,7 +431,7 @@ var skillsCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if isInteractive(false) {
-			return runDashboard()
+			return silenceCancel(runDashboard())
 		}
 		return cmd.Help()
 	},
@@ -405,7 +449,7 @@ var skillsTUICmd = &cobra.Command{
 		if !isInteractive(false) {
 			return fmt.Errorf("`huly skills tui` requires an interactive terminal")
 		}
-		return runDashboard()
+		return silenceCancel(runDashboard())
 	},
 }
 ```
@@ -467,6 +511,10 @@ pre-checked agent picker, then a confirmation. Add `--yes` to skip the
 confirmation, or `--no-interactive` to force the non-interactive behavior
 (which then requires `--all` or `--agents`). In a pipe or script (no TTY) the
 commands are always non-interactive and require an explicit selector.
+
+The dashboard always confirms before applying and does not accept
+`--force`/`--dry-run`/`--fail-on-conflict`; for those, use the explicit
+commands (e.g. `huly skills install --force`).
 ```
 
 Add `--yes` and `--no-interactive` rows to the flags table:
@@ -497,7 +545,7 @@ git commit -m "docs(skills): document the interactive TUI + --yes/--no-interacti
 - Dashboard = skills → agents → action → apply → tokens → Task 2. ✓
 - Docs → Task 3. ✓
 
-Deferred / out of scope (unchanged): the exec-bit follow-up, `Catalog` is already memoized (A2 follow-up done in B), the JSON-schema doc note.
+Deferred / out of scope: the exec-bit follow-up; `Catalog` is already memoized (done in B). **The spec's "rewire login's `otpInteractive()` to the shared `isInteractive()`" is deferred with reason:** the concurrent `login --otp` huh work has NOT landed in this branch (verified: `cmd/login.go` has no huh/otpInteractive, `go.mod` has no huh before this phase) — there is nothing to rewire. If that work merges before this phase runs, the implementer should point login's TTY check at this `isInteractive`. **Dashboard scope cut:** bare `huly skills`/`huly skills tui` don't register `--force`/`--dry-run`/`--fail-on-conflict`, so the dashboard always runs with them false (no forcing through a conflict, no dry-run, exits 0 on conflict). For those, use the explicit `huly skills install --force` etc. Documented in Task 3.
 
 **Placeholder scan:** no TBD/TODO. The only "verify against the pinned version" note is the huh API shape in Task 1 Step 4 — the code given matches huh's stable API; the note tells the implementer to `go doc` if the pinned version differs (huh is a live external dep, so this is diligence, not a placeholder).
 
